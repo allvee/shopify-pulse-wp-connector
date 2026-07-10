@@ -38,6 +38,8 @@ class Wafi_Connector_Settings {
 			'fraud_action'          => 'block',
 			'enable_customer_sync'  => 0,
 			'customer_sync_dir'     => 'both',
+			'enable_catalog_sync'   => 0,
+			'catalog_sync_dir'      => 'push',
 			'order_statuses'        => array( 'pending', 'on-hold', 'processing', 'completed', 'refunded', 'cancelled', 'failed' ),
 			'abandoned_idle_min'    => 30,
 			'allow_status_writeback' => 0,
@@ -158,6 +160,9 @@ class Wafi_Connector_Settings {
 		$clean['enable_customer_sync']  = empty( $raw['enable_customer_sync'] ) ? 0 : 1;
 		$cust_dir                       = isset( $raw['customer_sync_dir'] ) ? sanitize_key( $raw['customer_sync_dir'] ) : 'both';
 		$clean['customer_sync_dir']     = in_array( $cust_dir, array( 'push', 'pull', 'both' ), true ) ? $cust_dir : 'both';
+		$clean['enable_catalog_sync']   = empty( $raw['enable_catalog_sync'] ) ? 0 : 1;
+		$cat_dir                        = isset( $raw['catalog_sync_dir'] ) ? sanitize_key( $raw['catalog_sync_dir'] ) : 'push';
+		$clean['catalog_sync_dir']      = in_array( $cat_dir, array( 'push', 'pull', 'both' ), true ) ? $cat_dir : 'push';
 		$clean['allow_status_writeback'] = empty( $raw['allow_status_writeback'] ) ? 0 : 1;
 		$clean['debug_log']             = empty( $raw['debug_log'] ) ? 0 : 1;
 		$clean['abandoned_idle_min']    = max( 5, absint( isset( $raw['abandoned_idle_min'] ) ? $raw['abandoned_idle_min'] : 30 ) );
@@ -355,6 +360,21 @@ class Wafi_Connector_Settings {
 								</select>
 							</p>
 							<p class="description"><?php esc_html_e( 'Matches by email/phone. Requires customers.read + customers.write scopes on the OAuth app.', 'wafi-connector' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Catalog sync', 'wafi-connector' ); ?></th>
+						<td>
+							<label><input type="checkbox" name="wafi[enable_catalog_sync]" value="1" <?php checked( $s['enable_catalog_sync'] ); ?> /> <?php esc_html_e( 'Sync product categories & brands with the platform', 'wafi-connector' ); ?></label>
+							<p style="margin-top:6px;">
+								<label for="wafi_cat_dir"><?php esc_html_e( 'Direction:', 'wafi-connector' ); ?></label>
+								<select name="wafi[catalog_sync_dir]" id="wafi_cat_dir">
+									<option value="push" <?php selected( $s['catalog_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
+									<option value="both" <?php selected( $s['catalog_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (outbound in a later release)', 'wafi-connector' ); ?></option>
+									<option value="pull" <?php selected( $s['catalog_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce (later release)', 'wafi-connector' ); ?></option>
+								</select>
+							</p>
+							<p class="description"><?php esc_html_e( 'Categories carry hierarchy + SEO. Products/variants land in a later release. Requires brands.write, categories.write, collections.write scopes.', 'wafi-connector' ); ?></p>
 						</td>
 					</tr>
 					<tr>

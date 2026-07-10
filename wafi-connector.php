@@ -35,6 +35,7 @@ define( 'WAFI_CONNECTOR_ABANDONED_CRON', 'wafi_connector_abandoned_sweep' );
 define( 'WAFI_CONNECTOR_POLL_CRON', 'wafi_connector_status_poll' );
 define( 'WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION', 'wafi_connector_sync_customer' );
 define( 'WAFI_CONNECTOR_CUSTOMER_PULL_CRON', 'wafi_connector_customer_pull' );
+define( 'WAFI_CONNECTOR_TERM_SYNC_ACTION', 'wafi_connector_sync_term' );
 
 // Order meta keys.
 define( 'WAFI_CONNECTOR_META_ID', '_wafi_order_id' );
@@ -53,6 +54,8 @@ require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-abandoned-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-analytics.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-fraud.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-customer-sync.php';
+require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-seo.php';
+require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-catalog-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-status-poller.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-install.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-plugin.php';
