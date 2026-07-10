@@ -59,6 +59,7 @@ require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-customer-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-seo.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-catalog-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-product-sync.php';
+require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-seo-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-status-poller.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-install.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-plugin.php';
