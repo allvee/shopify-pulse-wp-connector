@@ -239,6 +239,22 @@ class Wafi_Connector_Settings {
 				<?php esc_html_e( 'Push WooCommerce orders, incomplete carts and analytics to your Wafi store. Register an OAuth app on the platform (scopes: orders.read, orders.write) and paste the credentials below.', 'wafi-connector' ); ?>
 			</p>
 
+			<details style="margin:12px 0;background:#fff;border:1px solid #dcdcde;border-radius:4px;padding:8px 14px;">
+				<summary style="cursor:pointer;font-weight:600;"><?php esc_html_e( 'Quick setup guide', 'wafi-connector' ); ?></summary>
+				<ol style="margin:10px 0 6px 18px;line-height:1.7;">
+					<li><?php esc_html_e( 'On the Wafi platform, register an OAuth app for this store with scopes orders.read and orders.write. Copy the Client ID, the Client Secret (shown once) and your Store SID.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Admin API base URL = your admin API host, e.g. https://api.admin.yourdomain.com (host only — /api/v1 is added automatically).', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Storefront API base URL = your storefront/client API host, e.g. https://api.yourdomain.com. Leave blank if it is the same host as the admin API.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Paste Store SID, Client ID and Client Secret.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Tick "Active", choose what to sync (orders / carts / analytics / fraud) and the order statuses to push.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Save changes, then click "Verify connection". A green status means you are connected.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Click "Sync now" to backfill your recent orders to the platform.', 'wafi-connector' ); ?></li>
+				</ol>
+				<p class="description" style="margin-left:4px;">
+					<?php esc_html_e( 'Not sure of your host URLs? They are the public domains your Wafi admin API and storefront API are served on. If everything runs on one domain, put it in the Admin API base URL and leave the Storefront field blank.', 'wafi-connector' ); ?>
+				</p>
+			</details>
+
 			<?php
 			$status = $this->status();
 			$active = $this->is_active();
