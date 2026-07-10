@@ -44,6 +44,7 @@ define( 'WAFI_CONNECTOR_META_PIXEL_SENT', '_wafi_purchase_pixel_sent' );
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-logger.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-settings.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-api-client.php';
+require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-attribution.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-order-mapper.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-order-sync.php';
 require_once WAFI_CONNECTOR_DIR . 'includes/class-wafi-abandoned-sync.php';

@@ -23,6 +23,8 @@ class Wafi_Connector_Plugin {
 	private $logger;
 	/** @var Wafi_Connector_Api_Client */
 	private $api;
+	/** @var Wafi_Connector_Attribution */
+	private $attribution;
 	/** @var Wafi_Connector_Order_Sync */
 	private $order_sync;
 	/** @var Wafi_Connector_Abandoned_Sync */
@@ -50,6 +52,7 @@ class Wafi_Connector_Plugin {
 		$this->settings       = new Wafi_Connector_Settings();
 		$this->logger         = new Wafi_Connector_Logger( $this->settings );
 		$this->api            = new Wafi_Connector_Api_Client( $this->settings, $this->logger );
+		$this->attribution    = new Wafi_Connector_Attribution( $this->settings );
 		$this->order_sync     = new Wafi_Connector_Order_Sync( $this->settings, $this->api, $this->logger );
 		$this->abandoned_sync = new Wafi_Connector_Abandoned_Sync( $this->settings, $this->api, $this->logger );
 		$this->analytics      = new Wafi_Connector_Analytics( $this->settings, $this->api, $this->logger );
