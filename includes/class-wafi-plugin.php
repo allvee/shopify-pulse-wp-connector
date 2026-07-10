@@ -33,6 +33,8 @@ class Wafi_Connector_Plugin {
 	private $analytics;
 	/** @var Wafi_Connector_Fraud */
 	private $fraud;
+	/** @var Wafi_Connector_Customer_Sync */
+	private $customer_sync;
 	/** @var Wafi_Connector_Status_Poller */
 	private $poller;
 
@@ -57,6 +59,7 @@ class Wafi_Connector_Plugin {
 		$this->abandoned_sync = new Wafi_Connector_Abandoned_Sync( $this->settings, $this->api, $this->logger );
 		$this->analytics      = new Wafi_Connector_Analytics( $this->settings, $this->api, $this->logger );
 		$this->fraud          = new Wafi_Connector_Fraud( $this->settings, $this->api, $this->logger );
+		$this->customer_sync  = new Wafi_Connector_Customer_Sync( $this->settings, $this->api, $this->logger );
 		$this->poller         = new Wafi_Connector_Status_Poller( $this->settings, $this->api, $this->logger );
 
 		// The settings screen (with Verify / Activate / Sync) is ALWAYS wired so
@@ -70,6 +73,7 @@ class Wafi_Connector_Plugin {
 			$this->abandoned_sync->register();
 			$this->analytics->register();
 			$this->fraud->register();
+			$this->customer_sync->register();
 			$this->poller->register();
 		}
 
