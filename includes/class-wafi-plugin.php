@@ -23,6 +23,8 @@ class Wafi_Connector_Plugin {
 	private $logger;
 	/** @var Wafi_Connector_Api_Client */
 	private $api;
+	/** @var Wafi_Connector_Attribution */
+	private $attribution;
 	/** @var Wafi_Connector_Order_Sync */
 	private $order_sync;
 	/** @var Wafi_Connector_Abandoned_Sync */
@@ -31,6 +33,14 @@ class Wafi_Connector_Plugin {
 	private $analytics;
 	/** @var Wafi_Connector_Fraud */
 	private $fraud;
+	/** @var Wafi_Connector_Customer_Sync */
+	private $customer_sync;
+	/** @var Wafi_Connector_Catalog_Sync */
+	private $catalog_sync;
+	/** @var Wafi_Connector_Product_Sync */
+	private $product_sync;
+	/** @var Wafi_Connector_Seo_Sync */
+	private $seo_sync;
 	/** @var Wafi_Connector_Status_Poller */
 	private $poller;
 
@@ -50,10 +60,15 @@ class Wafi_Connector_Plugin {
 		$this->settings       = new Wafi_Connector_Settings();
 		$this->logger         = new Wafi_Connector_Logger( $this->settings );
 		$this->api            = new Wafi_Connector_Api_Client( $this->settings, $this->logger );
+		$this->attribution    = new Wafi_Connector_Attribution( $this->settings );
 		$this->order_sync     = new Wafi_Connector_Order_Sync( $this->settings, $this->api, $this->logger );
 		$this->abandoned_sync = new Wafi_Connector_Abandoned_Sync( $this->settings, $this->api, $this->logger );
 		$this->analytics      = new Wafi_Connector_Analytics( $this->settings, $this->api, $this->logger );
 		$this->fraud          = new Wafi_Connector_Fraud( $this->settings, $this->api, $this->logger );
+		$this->customer_sync  = new Wafi_Connector_Customer_Sync( $this->settings, $this->api, $this->logger );
+		$this->catalog_sync   = new Wafi_Connector_Catalog_Sync( $this->settings, $this->api, $this->logger );
+		$this->product_sync   = new Wafi_Connector_Product_Sync( $this->settings, $this->api, $this->logger );
+		$this->seo_sync       = new Wafi_Connector_Seo_Sync( $this->settings, $this->api, $this->logger );
 		$this->poller         = new Wafi_Connector_Status_Poller( $this->settings, $this->api, $this->logger );
 
 		// The settings screen (with Verify / Activate / Sync) is ALWAYS wired so
@@ -67,6 +82,10 @@ class Wafi_Connector_Plugin {
 			$this->abandoned_sync->register();
 			$this->analytics->register();
 			$this->fraud->register();
+			$this->customer_sync->register();
+			$this->catalog_sync->register();
+			$this->product_sync->register();
+			$this->seo_sync->register();
 			$this->poller->register();
 		}
 

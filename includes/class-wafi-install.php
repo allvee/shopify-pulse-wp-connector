@@ -37,6 +37,8 @@ class Wafi_Connector_Install {
 	public static function deactivate() {
 		wp_clear_scheduled_hook( WAFI_CONNECTOR_ABANDONED_CRON );
 		wp_clear_scheduled_hook( WAFI_CONNECTOR_POLL_CRON );
+		wp_clear_scheduled_hook( WAFI_CONNECTOR_CUSTOMER_PULL_CRON );
+		wp_clear_scheduled_hook( WAFI_CONNECTOR_CATALOG_PULL_CRON );
 	}
 
 	public static function schedule_crons() {
@@ -45,6 +47,12 @@ class Wafi_Connector_Install {
 		}
 		if ( ! wp_next_scheduled( WAFI_CONNECTOR_POLL_CRON ) ) {
 			wp_schedule_event( time() + 300, 'wafi_10min', WAFI_CONNECTOR_POLL_CRON );
+		}
+		if ( ! wp_next_scheduled( WAFI_CONNECTOR_CUSTOMER_PULL_CRON ) ) {
+			wp_schedule_event( time() + 300, 'wafi_15min', WAFI_CONNECTOR_CUSTOMER_PULL_CRON );
+		}
+		if ( ! wp_next_scheduled( WAFI_CONNECTOR_CATALOG_PULL_CRON ) ) {
+			wp_schedule_event( time() + 300, 'wafi_15min', WAFI_CONNECTOR_CATALOG_PULL_CRON );
 		}
 	}
 

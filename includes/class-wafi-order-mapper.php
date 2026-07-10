@@ -70,9 +70,15 @@ class Wafi_Connector_Order_Mapper {
 			);
 		}
 
-		$attribution = self::attribution( $order );
+		$blob        = Wafi_Connector_Attribution::get( $order );
+		$attribution = self::attribution( $order, $blob );
 		if ( ! empty( $attribution ) ) {
 			$payload['attribution'] = $attribution;
+		}
+		// Rich attribution (first + last touch, traffic source, browser time,
+		// device, visit count) that doesn't fit the flat UTM columns.
+		if ( ! empty( $blob ) ) {
+			$payload['attributionExtra'] = $blob;
 		}
 
 		/**
@@ -148,8 +154,39 @@ class Wafi_Connector_Order_Mapper {
 		);
 	}
 
-	private static function attribution( WC_Order $order ) {
-		$map = array(
+	/**
+	 * Flat UTM/referrer attribution for the platform's AttributionDto columns.
+	 * Prefers the tracker's LAST-touch cookie; falls back per-field to
+	 * WooCommerce's own order-attribution meta.
+	 *
+	 * @param WC_Order $order
+	 * @param array    $blob   the rich attribution blob (may be empty)
+	 * @return array
+	 */
+	private static function attribution( WC_Order $order, $blob = array() ) {
+		$out  = array();
+		$last = ( isset( $blob['last_touch'] ) && is_array( $blob['last_touch'] ) ) ? $blob['last_touch'] : array();
+		$cap  = function ( $key, $val ) {
+			$limit = ( 0 === strpos( $key, 'utm' ) ) ? 128 : 1024;
+			return substr( (string) $val, 0, $limit );
+		};
+
+		$from_blob = array(
+			'utmSource'   => 'utm_source',
+			'utmMedium'   => 'utm_medium',
+			'utmCampaign' => 'utm_campaign',
+			'utmTerm'     => 'utm_term',
+			'utmContent'  => 'utm_content',
+			'referrer'    => 'referrer',
+			'landingPath' => 'landing_path',
+		);
+		foreach ( $from_blob as $dto => $bk ) {
+			if ( ! empty( $last[ $bk ] ) ) {
+				$out[ $dto ] = $cap( $dto, $last[ $bk ] );
+			}
+		}
+
+		$from_wc = array(
 			'utmSource'   => '_wc_order_attribution_utm_source',
 			'utmMedium'   => '_wc_order_attribution_utm_medium',
 			'utmCampaign' => '_wc_order_attribution_utm_campaign',
@@ -158,11 +195,12 @@ class Wafi_Connector_Order_Mapper {
 			'referrer'    => '_wc_order_attribution_referrer',
 			'landingPath' => '_wc_order_attribution_session_entry',
 		);
-		$out = array();
-		foreach ( $map as $key => $meta ) {
-			$val = $order->get_meta( $meta );
-			if ( '' !== (string) $val ) {
-				$out[ $key ] = substr( (string) $val, 0, 1024 );
+		foreach ( $from_wc as $dto => $meta ) {
+			if ( empty( $out[ $dto ] ) ) {
+				$val = $order->get_meta( $meta );
+				if ( '' !== (string) $val ) {
+					$out[ $dto ] = $cap( $dto, $val );
+				}
 			}
 		}
 		return $out;
