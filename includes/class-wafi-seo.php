@@ -85,6 +85,35 @@ class Wafi_Connector_Seo {
 		}
 	}
 
+	/** Write SEO onto a term (used by the outbound/pull direction). */
+	public static function set_term_seo( $term_id, $taxonomy, $title, $desc ) {
+		if ( '' !== (string) $title ) {
+			update_term_meta( $term_id, 'rank_math_title', $title );
+			update_term_meta( $term_id, '_yoast_wpseo_title', $title );
+		}
+		if ( '' !== (string) $desc ) {
+			update_term_meta( $term_id, 'rank_math_description', $desc );
+			update_term_meta( $term_id, '_yoast_wpseo_metadesc', $desc );
+		}
+		// Older Yoast option store.
+		if ( '' !== (string) $title || '' !== (string) $desc ) {
+			$opt = get_option( 'wpseo_taxonomy_meta' );
+			$opt = is_array( $opt ) ? $opt : array();
+			if ( ! isset( $opt[ $taxonomy ] ) ) {
+				$opt[ $taxonomy ] = array();
+			}
+			$row = isset( $opt[ $taxonomy ][ $term_id ] ) ? $opt[ $taxonomy ][ $term_id ] : array();
+			if ( '' !== (string) $title ) {
+				$row['wpseo_title'] = $title;
+			}
+			if ( '' !== (string) $desc ) {
+				$row['wpseo_desc'] = $desc;
+			}
+			$opt[ $taxonomy ][ $term_id ] = $row;
+			update_option( 'wpseo_taxonomy_meta', $opt );
+		}
+	}
+
 	private static function pack( $title, $desc ) {
 		$out = array();
 		if ( '' !== (string) $title ) {

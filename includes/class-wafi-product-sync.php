@@ -21,6 +21,9 @@ class Wafi_Connector_Product_Sync {
 
 	private static $brand_tax = array( 'product_brand', 'pwb-brand', 'pa_brand', 'yith_product_brand' );
 
+	/** True while applying a pulled change, so the product hooks don't echo it back. */
+	private static $suppress = false;
+
 	/** @var Wafi_Connector_Settings */
 	private $settings;
 	/** @var Wafi_Connector_Api_Client */
@@ -44,9 +47,15 @@ class Wafi_Connector_Product_Sync {
 			add_action( 'woocommerce_update_product', array( $this, 'on_product' ), 20, 1 );
 			add_action( WAFI_CONNECTOR_PRODUCT_SYNC_ACTION, array( $this, 'handle_product' ), 10, 1 );
 		}
+		if ( 'pull' === $dir || 'both' === $dir ) {
+			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
+		}
 	}
 
 	public function on_product( $product_id ) {
+		if ( self::$suppress ) {
+			return;
+		}
 		$product_id = (int) $product_id;
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
@@ -243,5 +252,151 @@ class Wafi_Connector_Product_Sync {
 			}
 		}
 		return $payload;
+	}
+
+	// ── Pull (platform → WooCommerce) ───────────────────────────────────────
+
+	public function pull() {
+		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
+		if ( ( 'pull' !== $dir && 'both' !== $dir ) || ! function_exists( 'wc_get_product' ) ) {
+			return;
+		}
+		$cursor = get_option( 'wafi_prod_pull_cursor', '' );
+		$res    = $this->api->get( '/connect/products?limit=50' . ( $cursor ? '&updatedSince=' . rawurlencode( $cursor ) : '' ) );
+		if ( is_wp_error( $res ) ) {
+			$this->logger->error( 'Product pull failed: ' . $res->get_error_message() );
+			return;
+		}
+		$rows = isset( $res['products'] ) && is_array( $res['products'] ) ? $res['products'] : array();
+		$max  = $cursor;
+		foreach ( $rows as $p ) {
+			$this->apply_product( $p );
+			if ( ! empty( $p['updatedAt'] ) && $p['updatedAt'] > $max ) {
+				$max = $p['updatedAt'];
+			}
+		}
+		if ( $max && $max !== $cursor ) {
+			update_option( 'wafi_prod_pull_cursor', $max, false );
+		}
+	}
+
+	private function apply_product( $p ) {
+		$platform_id      = isset( $p['id'] ) ? (int) $p['id'] : 0;
+		$platform_updated = isset( $p['updatedAt'] ) ? (string) $p['updatedAt'] : '';
+		$variants         = isset( $p['variants'] ) && is_array( $p['variants'] ) ? $p['variants'] : array();
+
+		$wc_id = 0;
+		if ( ! empty( $p['externalId'] ) && ( isset( $p['externalSource'] ) && 'woocommerce' === $p['externalSource'] ) ) {
+			if ( wc_get_product( (int) $p['externalId'] ) ) {
+				$wc_id = (int) $p['externalId'];
+			}
+		}
+		if ( ! $wc_id && ! empty( $p['handle'] ) ) {
+			$post = get_page_by_path( $p['handle'], OBJECT, 'product' );
+			if ( $post ) {
+				$wc_id = (int) $post->ID;
+			}
+		}
+		if ( ! $wc_id ) {
+			foreach ( $variants as $v ) {
+				if ( ! empty( $v['sku'] ) ) {
+					$id = wc_get_product_id_by_sku( $v['sku'] );
+					if ( $id ) {
+						$vp    = wc_get_product( $id );
+						$wc_id = ( $vp && $vp->get_parent_id() ) ? $vp->get_parent_id() : $id;
+						break;
+					}
+				}
+			}
+		}
+
+		// Last-write-wins.
+		if ( $wc_id ) {
+			$last = get_post_meta( $wc_id, '_wafi_prod_platform_updated', true );
+			if ( $last && $platform_updated && $platform_updated <= $last ) {
+				return;
+			}
+		}
+
+		self::$suppress = true;
+		if ( $wc_id ) {
+			$product = wc_get_product( $wc_id );
+			if ( $product ) {
+				if ( ! empty( $p['title'] ) ) {
+					$product->set_name( $p['title'] );
+				}
+				if ( isset( $p['descriptionHtml'] ) ) {
+					$product->set_description( $p['descriptionHtml'] );
+				}
+				if ( ! empty( $p['status'] ) ) {
+					$product->set_status( $this->wc_status( $p['status'] ) );
+				}
+				if ( $product->is_type( 'simple' ) && 1 === count( $variants ) ) {
+					if ( isset( $variants[0]['price'] ) ) {
+						$product->set_regular_price( (string) $variants[0]['price'] );
+					}
+				}
+				$product->save();
+				if ( $product->is_type( 'variable' ) ) {
+					$this->apply_variation_prices( $product, $variants );
+				}
+				$this->stamp_product( $wc_id, $platform_id, $platform_updated, $p );
+			}
+		} elseif ( count( $variants ) <= 1 ) {
+			$product = new WC_Product_Simple();
+			$product->set_name( ! empty( $p['title'] ) ? $p['title'] : 'Product' );
+			if ( ! empty( $p['handle'] ) ) {
+				$product->set_slug( $p['handle'] );
+			}
+			if ( isset( $p['descriptionHtml'] ) ) {
+				$product->set_description( $p['descriptionHtml'] );
+			}
+			$product->set_status( $this->wc_status( isset( $p['status'] ) ? $p['status'] : 'draft' ) );
+			if ( ! empty( $variants ) ) {
+				if ( isset( $variants[0]['price'] ) ) {
+					$product->set_regular_price( (string) $variants[0]['price'] );
+				}
+				if ( ! empty( $variants[0]['sku'] ) ) {
+					$product->set_sku( $variants[0]['sku'] );
+				}
+			}
+			$new_id = $product->save();
+			if ( $new_id ) {
+				$this->stamp_product( $new_id, $platform_id, $platform_updated, $p );
+			}
+		} else {
+			$this->logger->debug( 'Skipped creating multi-variant product ' . $platform_id . ' from platform (create the variable product manually first).' );
+		}
+		self::$suppress = false;
+	}
+
+	private function apply_variation_prices( $product, $variants ) {
+		$by_sku = array();
+		foreach ( $product->get_children() as $vid ) {
+			$vp = wc_get_product( $vid );
+			if ( $vp && $vp->get_sku() ) {
+				$by_sku[ $vp->get_sku() ] = $vp;
+			}
+		}
+		foreach ( $variants as $v ) {
+			if ( ! empty( $v['sku'] ) && isset( $by_sku[ $v['sku'] ] ) && isset( $v['price'] ) ) {
+				$by_sku[ $v['sku'] ]->set_regular_price( (string) $v['price'] );
+				$by_sku[ $v['sku'] ]->save();
+			}
+		}
+	}
+
+	private function stamp_product( $wc_id, $platform_id, $platform_updated, $p ) {
+		Wafi_Connector_Seo::set_post_seo(
+			$wc_id,
+			isset( $p['seoTitle'] ) ? $p['seoTitle'] : '',
+			isset( $p['seoDescription'] ) ? $p['seoDescription'] : ''
+		);
+		update_post_meta( $wc_id, self::PLATFORM_META, $platform_id );
+		update_post_meta( $wc_id, '_wafi_prod_platform_updated', $platform_updated );
+	}
+
+	private function wc_status( $status ) {
+		return ( 'active' === $status || 'publish' === $status ) ? 'publish' : 'draft';
 	}
 }

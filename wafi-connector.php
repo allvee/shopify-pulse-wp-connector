@@ -37,6 +37,7 @@ define( 'WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION', 'wafi_connector_sync_customer' );
 define( 'WAFI_CONNECTOR_CUSTOMER_PULL_CRON', 'wafi_connector_customer_pull' );
 define( 'WAFI_CONNECTOR_TERM_SYNC_ACTION', 'wafi_connector_sync_term' );
 define( 'WAFI_CONNECTOR_PRODUCT_SYNC_ACTION', 'wafi_connector_sync_product' );
+define( 'WAFI_CONNECTOR_CATALOG_PULL_CRON', 'wafi_connector_catalog_pull' );
 
 // Order meta keys.
 define( 'WAFI_CONNECTOR_META_ID', '_wafi_order_id' );
