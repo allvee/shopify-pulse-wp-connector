@@ -1,0 +1,13 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Build artefacts
+*.zip
+/dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
