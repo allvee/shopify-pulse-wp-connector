@@ -392,8 +392,43 @@ class Wafi_Connector_Product_Sync {
 			isset( $p['seoTitle'] ) ? $p['seoTitle'] : '',
 			isset( $p['seoDescription'] ) ? $p['seoDescription'] : ''
 		);
+		$this->apply_taxonomy( $wc_id, $p );
 		update_post_meta( $wc_id, self::PLATFORM_META, $platform_id );
 		update_post_meta( $wc_id, '_wafi_prod_platform_updated', $platform_updated );
+	}
+
+	/**
+	 * Assign categories + brand on a pulled product. The platform returns the
+	 * terms' external ids, which ARE the WooCommerce term ids they synced from,
+	 * so map them straight to product_cat / the brand taxonomy (only ids that
+	 * still resolve to a real term are kept).
+	 */
+	private function apply_taxonomy( $wc_id, $p ) {
+		if ( ! empty( $p['categoryExternalIds'] ) && is_array( $p['categoryExternalIds'] ) ) {
+			$ids = array();
+			foreach ( $p['categoryExternalIds'] as $ext ) {
+				$term = get_term( (int) $ext, 'product_cat' );
+				if ( $term && ! is_wp_error( $term ) ) {
+					$ids[] = (int) $ext;
+				}
+			}
+			if ( $ids ) {
+				wp_set_object_terms( $wc_id, $ids, 'product_cat' );
+			}
+		}
+
+		if ( ! empty( $p['brandExternalId'] ) ) {
+			foreach ( self::$brand_tax as $tax ) {
+				if ( ! taxonomy_exists( $tax ) ) {
+					continue;
+				}
+				$term = get_term( (int) $p['brandExternalId'], $tax );
+				if ( $term && ! is_wp_error( $term ) ) {
+					wp_set_object_terms( $wc_id, array( (int) $p['brandExternalId'] ), $tax );
+					break;
+				}
+			}
+		}
 	}
 
 	private function wc_status( $status ) {
