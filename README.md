@@ -2,177 +2,228 @@
 
 # Wafi Commerce Connector
 
-**Two-way sync between WooCommerce and the [Wafi Commerce](https://wafiperfume.com) platform — orders, customers, catalog, analytics, fraud and SEO.**
+**Connect your WooCommerce store to the Wafi Commerce platform — two-way sync, server-side analytics, and fraud screening in one plugin.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-2563eb.svg)](https://github.com/allvee/wafi-wp-connector/releases)
-[![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-21759b.svg)](https://wordpress.org)
-[![WooCommerce](https://img.shields.io/badge/WooCommerce-6.0%2B-96588a.svg)](https://woocommerce.com)
-[![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb3.svg)](https://php.net)
-[![License](https://img.shields.io/badge/license-GPL--2.0--or--later-3da639.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-21759b.svg)
+![WooCommerce](https://img.shields.io/badge/WooCommerce-6.0%2B-96588a.svg)
+![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4.svg)
+![License](https://img.shields.io/badge/license-GPL--2.0--or--later-green.svg)
 
 </div>
 
 ---
 
-Connect any WooCommerce store to a single Wafi store with one OAuth credential, then run your business from the platform: mirror orders, keep customers and catalog in sync **both directions**, forward analytics to Meta / TikTok / GA4, screen checkouts through a multi-layer fraud engine, and manage SEO redirects centrally.
+Wafi Commerce Connector links a single WooCommerce store to the Wafi Commerce platform. It keeps customers and catalog in sync both ways, mirrors every order for reporting, pushes server-side conversion events, and screens checkouts through the platform's fraud engine — all from one admin screen.
 
-> **Two repositories.** This is the **store-side plugin**. The platform-side connector API lives in `api.wafiperume.com` (`apps/admin-api/.../connector`), documented in `docs/runbooks/woocommerce-connector.md`.
+> **This is the store-side plugin.** The platform-side connector API lives in a companion repository (`api.wafiperume.com`, under `apps/admin-api/.../connector`; see `docs/runbooks/woocommerce-connector.md`). This README covers only what runs on your WordPress site.
 
 ## Table of contents
 
-- [Feature matrix](#feature-matrix)
+- [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Admin screen](#admin-screen)
 - [Architecture](#architecture)
 - [Platform endpoints](#platform-endpoints)
-- [Sync model](#sync-model)
 - [Extending](#extending)
-- [Limitations](#limitations)
+- [Notes](#notes)
 - [License](#license)
 
-## Feature matrix
+## Features
 
-| Domain | WooCommerce → Platform | Platform → WooCommerce | Notes |
-| --- | :---: | :---: | --- |
-| **Orders** (paid + incomplete) | ✅ | ✅ *(status)* | Idempotent mirror; free-text lines (no inventory impact) |
-| **Abandoned carts** | ✅ | — | Idle-cart sweep with a stable fingerprint |
-| **Customers** | ✅ | ✅ | Match by email/phone; last-write-wins |
-| **Categories** | ✅ | ✅ | Hierarchy preserved |
-| **Brands** | ✅ | ✅ | `product_brand` / third-party taxonomies |
-| **Products + variants** | ✅ | ✅ | Simple + variable; images, membership |
-| **SEO title / description** | ✅ | ✅ | Yoast · Rank Math · AIOSEO |
-| **SEO redirects / robots** | — | ✅ | Applied on the storefront (301/302 + `robots.txt`) |
-| **Analytics** | ✅ | — | PageView · ViewContent · AddToCart · InitiateCheckout · Purchase · Registration |
-| **Fraud screening** | ✅ | — | 4-layer: phone/name/address · IP velocity · courier history |
+**Orders** — Every order, paid or incomplete, is mirrored to the platform for unified reporting. Sync is idempotent (deduplicated on the WooCommerce order id) and runs through Action Scheduler with backoff retry and a payload-hash skip, so unchanged orders never re-send. Order lines are free-text and never touch platform inventory. Optional, off-by-default status sync-back reconciles WooCommerce status from the platform (forward-only).
+
+**Abandoned carts** — Idle carts are captured to a table and swept every 15 minutes by WP-Cron (threshold configurable), then sent to the platform with a stable fingerprint. Captured rows are garbage-collected after 30 days.
+
+**Analytics** — Server-side `Purchase` and `CompleteRegistration` events fire from WooCommerce; browser `PageView`, `ViewContent`, `AddToCart`, and `InitiateCheckout` are relayed through a same-site AJAX proxy. The platform fans events out to Meta CAPI, TikTok, and GA4. Purchases are deduped by the platform on order id.
+
+**Fraud screening** — Checkouts are screened through the platform's 4-layer engine (phone/name/address heuristics, IP-velocity auto-block, courier delivery-history gate). You choose the action — block, hold, or flag. Screening **fails open**: if the API is unreachable, checkout proceeds. Works with both Classic and Block (Store API) checkout.
+
+**Attribution** — First-touch and last-touch data (landing page, referrer, traffic source, UTM parameters, `gclid`/`fbclid`), client browser time (hour range, weekday, month, timezone), device, and visit count are attached to each order as the `app:woocommerce/attribution` metafield on the platform.
+
+**Customer sync** — Two-way push and pull with last-write-wins, matched by email or phone. Direction is switchable: two-way, push-only, or pull-only.
+
+**Catalog sync** — Categories (with hierarchy), brands, and products/variants sync both ways. Products carry images, category/brand membership, and variants (simple and variable). SEO title/description sync both ways via Yoast, Rank Math, or AIOSEO. Pushes are hash-gated; pulls are loop-safe (suppression flag) with last-write-wins.
+
+**SEO redirects + robots** — Platform-managed 301/302 redirects are applied on the storefront via `template_redirect` (exact and trailing-slash match), and robots disallow rules are appended through the `robots_txt` filter.
+
+### Sync matrix
+
+| Entity | WC → Platform | Platform → WC | SEO fields |
+| --- | :---: | :---: | :---: |
+| Orders | Yes | Status only (opt-in, forward-only) | — |
+| Customers | Yes | Yes | — |
+| Categories | Yes | Yes | — |
+| Brands | Yes | Yes | — |
+| Products / variants | Yes | Yes | Two-way (Yoast / Rank Math / AIOSEO) |
+
+**One-way flows:** abandoned carts, analytics events, and attribution are push-only (WC → Platform). SEO redirects and robots rules are pull-only (Platform → WC).
 
 ## How it works
 
 ```
-                       WooCommerce (this plugin)                         Wafi platform
-  ┌───────────────────────────────────────────────┐        ┌───────────────────────────────┐
-  │  Order / cart / customer / product hooks       │──push─▶│  OAuth  POST /connect/*        │
-  │  Action Scheduler queue  ·  hash-gated         │        │  idempotent upsert, LWW        │
-  │                                                │◀─poll──│  GET  /connect/*  (cursor)     │
-  │  WP-Cron pull  ·  suppression flag             │        │                               │
-  │  Browser + server analytics  ─────────────────────────▶│  POST /pixel/events (CAPI)     │
-  │  Checkout screen  ────────────────────────────────────▶│  POST /fraud/screen            │
-  └───────────────────────────────────────────────┘        └───────────────────────────────┘
+                     WooCommerce store (this plugin)
+  ┌────────────────────────────────────────────────────────────────┐
+  │                                                                  │
+  │  Order / customer / catalog change                               │
+  │        │  hash-gate (skip if unchanged)                          │
+  │        ▼                                                         │
+  │   Action Scheduler ──── push ──────────────►  ADMIN API          │
+  │                                               /connect/*         │
+  │   WP-Cron (pull, under suppression flag) ◄────                   │
+  │                                                                  │
+  │   Browser + server events ── analytics ────►  STOREFRONT API     │
+  │   Checkout screen ────────── fraud ────────►  /pixel/*, /fraud/* │
+  │                                                                  │
+  └────────────────────────────────────────────────────────────────┘
 ```
 
-- **Push** runs through **Action Scheduler** (bundled with WooCommerce) with backoff retry, so a slow API call never blocks checkout, and is **hash-gated** so unchanged entities never re-send.
-- **Pull** runs on **WP-Cron** and applies only platform changes newer than the last seen (last-write-wins), under a **suppression flag** so a pulled write never bounces back as a push.
-- **Idempotent everywhere** — the platform matches on the external id (WooCommerce id) with a handle/SKU/email fallback, so re-delivery updates instead of duplicating.
+- **Idempotent match keys.** Entities match by external id (WooCommerce id) first, with handle/SKU or email/phone as a rename-safe fallback. Two entities sharing a handle are never merged.
+- **Last-write-wins.** Any two-way conflict resolves to the most recent write.
+- **Loop-safe.** Pushes are hash-gated so only real changes go out; pulls run under a suppression flag, so applying a pull never triggers a push back. Mirrored orders never double-send customer comms or pixels.
+- **Stock stays in WooCommerce.** Catalog sync never writes platform inventory — WooCommerce remains the source of truth for stock.
 
 ## Requirements
 
-| | |
-| --- | --- |
-| WordPress | 5.8+ |
-| WooCommerce | 6.0+ (HPOS compatible) |
-| PHP | 7.4+ |
-| Platform | A registered Wafi OAuth app with the scopes below |
+| Component | Version | Notes |
+| --- | --- | --- |
+| WordPress | 5.8+ | |
+| WooCommerce | 6.0+ | HPOS-compatible |
+| PHP | 7.4+ | |
+| Wafi store | One per site | One OAuth app = one store |
 
-**OAuth scopes** (grant what you use): `orders.read` · `orders.write` · `customers.read` · `customers.write` · `products.read` · `products.write` · `brands.write` · `categories.write` · `collections.write`.
+Authentication is OAuth 2.0 `client_credentials`. The plugin mints a `wat_` bearer token (1-hour TTL, auto-refreshed) via `POST {admin}/api/v1/oauth/token` and sends `Authorization` plus `X-Store-Sid` on every request. The admin host handles OAuth and `/connect/*`; the storefront host handles `/pixel/*` and `/fraud/*` (leave the storefront base blank to use the same host).
+
+**OAuth scopes to grant the app:**
+
+```
+orders.read      orders.write
+customers.read   customers.write
+products.read    products.write
+brands.write     categories.write     collections.write
+```
 
 ## Installation
 
-1. Upload `wafi-connector.zip` via **Plugins → Add New → Upload Plugin**, then **Activate** (WooCommerce must be active).
-2. Open **Wafi Connector** in the admin menu.
-3. Fill in the connection fields (see below) and click **Verify connection** — a green status badge means you're live.
-4. Choose what to sync, then **Save**. Use **Sync now** to backfill recent orders.
+1. Upload and activate the plugin (**Plugins → Add New → Upload**, or drop the folder in `wp-content/plugins/`).
+2. Register an OAuth app for your store on the Wafi platform, grant the scopes listed above, and copy the **client id**, **client secret**, and **store SID**.
+3. Open **Wafi Connector** in the WordPress admin, enter the API base URL and credentials, and click **Verify connection**.
+4. Enable the features you want, set sync directions, then flip the **Active** master switch on.
 
-A step-by-step guide is also available in [`SETUP.md`](./SETUP.md) and inside the plugin's settings screen.
+For a step-by-step walkthrough, see `SETUP.md` in this repo or the **Quick setup guide** panel on the plugin's settings page.
 
 ## Configuration
 
-| Setting | Description |
+All settings live in the `wafi_connector_settings` option.
+
+**Connection**
+
+| Field | Meaning |
 | --- | --- |
-| **Admin API base URL** | Wafi admin host (OAuth + `/connect/*`), e.g. `https://api.admin.yourdomain.com`. `/api/v1` is appended automatically. |
-| **Storefront API base URL** | Client/storefront host (`/pixel/*`, `/fraud/*`). Leave blank if it's the same host. |
-| **Store SID** | The `X-Store-Sid` tenant id — one WooCommerce site ↔ one Wafi store. |
-| **Client ID / Secret** | OAuth app credentials (`wapp_…` / `wsk_…`). Secret is write-only; blank keeps the stored value. |
-| **Connection: Active** | Master switch — pauses all syncing without losing settings. |
-| **Orders / Abandoned / Analytics / Fraud** | Independent toggles. |
-| **Customer sync** | Off · direction: two-way / push / pull. |
-| **Catalog sync** | Off · direction (categories, brands, products, SEO). |
-| **When fraud is detected** | `block` · `hold` · `flag`. |
-| **Order statuses to push** | Which statuses trigger an order push. |
-| **Allow status writeback** | Let the platform drive WooCommerce order status (forward-only). |
-| **Debug logging** | Verbose logs under *WooCommerce → Status → Logs* (source `wafi-connector`). |
+| `active` | Master switch — pauses all syncing without losing any settings. |
+| `api_base` | Admin API base URL (OAuth + `/connect/*`). |
+| `storefront_base` | Storefront API base URL (`/pixel/*`, `/fraud/*`). Blank = same host as admin. |
+| `sid` | Store SID, sent as `X-Store-Sid`. |
+| `client_id` | OAuth client id. |
+| `client_secret` | OAuth client secret. |
+
+**Feature toggles**
+
+| Field | Meaning |
+| --- | --- |
+| `enable_orders` | Mirror orders to the platform. |
+| `enable_abandoned` | Capture and sweep abandoned carts. |
+| `enable_analytics` | Send server + browser conversion events. |
+| `enable_fraud` | Screen checkouts through the fraud engine. |
+| `fraud_action` | Action on a flagged checkout: `block`, `hold`, or `flag`. |
+| `enable_customer_sync` | Turn on customer sync. |
+| `customer_sync_dir` | Customer direction: `both`, `push`, or `pull`. |
+| `enable_catalog_sync` | Turn on category/brand/product sync. |
+| `catalog_sync_dir` | Catalog direction: `push`, `both`, or `pull`. |
+| `order_statuses[]` | Which order statuses are pushed. |
+| `abandoned_idle_min` | Minutes a cart must be idle before it counts as abandoned. |
+| `allow_status_writeback` | Allow the platform to reconcile WooCommerce order status (forward-only). |
+| `debug_log` | Write verbose logs via `WC_Logger`. |
+
+## Admin screen
+
+The **Wafi Connector** settings page gives you:
+
+- **Status badge** — live connection state: **Connected**, **Paused**, or **Not verified**.
+- **Active master switch** — pauses every sync at once while preserving all settings.
+- **Verify connection** — validates credentials and the OAuth handshake.
+- **Sync now** — backfills recent orders on demand.
+- **Quick-setup guide** panel, per-feature toggles and direction selects, the order-status push filter, the fraud action selector, and the debug-logging toggle.
 
 ## Architecture
 
 ```
-wafi-connector.php              bootstrap · constants · activation · WooCommerce guard
 includes/
-  class-wafi-plugin.php          singleton orchestrator (wires + registers hooks)
-  class-wafi-settings.php        admin screen · Verify · Sync now · status badge
-  class-wafi-api-client.php      OAuth token lifecycle · signed HTTP (admin + storefront hosts)
-  class-wafi-logger.php          WC_Logger wrapper
-  ── orders ─────────────────────────────────────────────────────────────────────
-  class-wafi-order-mapper.php    WC_Order → ingest payload
-  class-wafi-order-sync.php      order hooks → Action Scheduler → /connect/orders
-  class-wafi-status-poller.php   poll /connect/orders → reconcile WC status (forward-only)
-  class-wafi-abandoned-sync.php  cart capture table + sweep → /connect/abandoned
-  ── growth ─────────────────────────────────────────────────────────────────────
-  class-wafi-attribution.php     first/last-touch + browser time → order metafield
-  class-wafi-analytics.php       server Purchase + browser proxy → /pixel/events
-  class-wafi-fraud.php           checkout screening → /fraud/screen (block/hold/flag)
-  ── two-way sync ───────────────────────────────────────────────────────────────
-  class-wafi-customer-sync.php   customers push + pull (last-write-wins)
-  class-wafi-catalog-sync.php    categories + brands push + pull (hierarchy)
-  class-wafi-product-sync.php    products + variations push + pull
-  class-wafi-seo-sync.php        redirects (301/302) + robots.txt from the platform
-  class-wafi-seo.php             SEO read/write bridge (Yoast · Rank Math · AIOSEO)
-  class-wafi-install.php         capture table (dbDelta) + cron schedules
-assets/js/
-  wafi-attr.js                   visitor attribution tracker
-  wafi-pixel.js                  browser analytics via same-site AJAX proxy
-uninstall.php                    removes options · token · cron · capture table
+├── class-wafi-plugin.php          Singleton orchestrator / bootstrap
+├── class-wafi-settings.php        Admin screen + Verify / Sync / status badge
+├── class-wafi-api-client.php      OAuth token + signed HTTP (admin + storefront hosts)
+├── class-wafi-logger.php          WC_Logger wrapper
+├── class-wafi-order-mapper.php    WC_Order → payload
+├── class-wafi-order-sync.php      Order hooks → Action Scheduler → /connect/orders
+├── class-wafi-status-poller.php   Poll → reconcile WC status (forward-only)
+├── class-wafi-abandoned-sync.php  Capture table + idle-cart sweep
+├── class-wafi-attribution.php     Visitor tracker → order metafield
+├── class-wafi-analytics.php       Server Purchase + browser event proxy
+├── class-wafi-fraud.php           Checkout screen → block / hold / flag
+├── class-wafi-customer-sync.php   Customers push + pull
+├── class-wafi-catalog-sync.php    Categories + brands push + pull
+├── class-wafi-product-sync.php    Products + variations push + pull
+├── class-wafi-seo-sync.php        Redirects (301/302) + robots rules
+├── class-wafi-seo.php             Yoast / Rank Math / AIOSEO read + write bridge
+└── class-wafi-install.php         Capture-table dbDelta + cron schedules
+
+assets/
+├── js/wafi-attr.js                Attribution tracker
+└── js/wafi-pixel.js               Browser analytics events
+
+uninstall.php                      Cleans options, token, cron, and the capture table
 ```
 
 ## Platform endpoints
 
-All under `…/api/v1`, OAuth-guarded (`wat_` bearer + `X-Store-Sid`).
-
-| Method | Path | Scope | Purpose |
+| Method | Path | Purpose | Host |
 | --- | --- | --- | --- |
-| `GET` | `/connect/ping` | `orders.read` | Verify credentials + scopes |
-| `POST`/`GET` | `/connect/orders` | `orders.*` | Order upsert / sync-back poll |
-| `POST` | `/connect/abandoned` | `orders.write` | Abandoned cart upsert |
-| `POST`/`GET` | `/connect/customers` | `customers.*` | Customer upsert / poll |
-| `POST`/`GET` | `/connect/{brands,categories,collections}` | `*.write` / `products.read` | Taxonomy upsert / poll |
-| `POST`/`GET` | `/connect/products` | `products.*` | Product upsert / poll |
-| `POST`/`GET` | `/connect/redirects` · `GET /connect/robots` | `products.*` | SEO redirects / robots |
-| `POST` | `/fraud/screen` | `orders.write` | Checkout fraud verdict *(storefront host)* |
-| `POST` | `/pixel/events` | *public* | Analytics ingest *(storefront host)* |
-
-## Sync model
-
-- **Match keys** — orders/products/customers/terms by external id first, then handle / SKU / email-phone. Rename-safe.
-- **Conflict resolution** — last-write-wins by `updatedAt`; a stale push is a no-op, a stale pull is skipped.
-- **Loop prevention** — pushes are gated on a content hash; pulls run under a suppression flag and refresh that hash so applied changes don't echo back.
-- **Stock stays in WooCommerce** — catalog sync never writes platform inventory; order lines are free-text.
+| POST | `/api/v1/oauth/token` | Mint / refresh the `wat_` bearer | Admin |
+| POST / GET | `/connect/orders` | Push orders / read status | Admin |
+| POST | `/connect/abandoned` | Push abandoned carts | Admin |
+| POST / GET | `/connect/customers` | Two-way customer sync | Admin |
+| POST / GET | `/connect/categories` | Two-way category sync | Admin |
+| POST / GET | `/connect/brands` | Two-way brand sync | Admin |
+| POST / GET | `/connect/products` | Two-way product / variant sync | Admin |
+| GET | `/connect/redirects` | Fetch managed 301/302 redirects | Admin |
+| GET | `/connect/robots` | Fetch robots disallow rules | Admin |
+| POST | `/pixel/events` | Analytics events (fanned to Meta / TikTok / GA4) | Storefront |
+| POST | `/fraud/screen` | Screen a checkout | Storefront |
 
 ## Extending
 
+Use the `wafi_connector_order_payload` filter to mutate the order payload before it is pushed.
+
 ```php
-// Mutate the order payload before it is pushed.
-add_filter( 'wafi_connector_order_payload', function ( $payload, $order ) {
-    $payload['tags'][] = 'from-woo';
+add_filter( 'wafi_connector_order_payload', function ( array $payload, WC_Order $order ) {
+    // Attach a custom field to every mirrored order.
+    $payload['metafields']['app:woocommerce/gift_note'] = $order->get_customer_note();
+
     return $payload;
 }, 10, 2 );
 ```
 
-## Limitations
+## Notes
 
-- One WooCommerce site connects to one Wafi store (one OAuth app = one store).
-- Purchase pixel is server-side only (deduped by the platform on order id).
-- Product **pull** updates existing products and creates simple ones; a multi-variant product must exist in WooCommerce first (creation is logged, not forced).
-- SEO redirects/robots are one-way (platform → WooCommerce).
+- **One store per app.** A WooCommerce site connects to exactly one Wafi store (one OAuth app = one store).
+- **Purchase is server-side.** The authoritative `Purchase` event fires from the server and is deduped by the platform on order id; browser events are supplemental.
+- **Order lines are free-text.** Mirrored order lines carry no platform inventory impact — stock stays in WooCommerce.
+- **Variant pull needs the product first.** Pulling variants requires the parent product to already exist on the WooCommerce side.
+- **SEO redirects are one-way.** Redirects and robots rules are managed on the platform and applied read-only on the storefront.
 
 ## License
 
-[GPL-2.0-or-later](https://www.gnu.org/licenses/gpl-2.0.html).
+GPL-2.0-or-later.
