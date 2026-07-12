@@ -57,17 +57,9 @@ class Wafi_Connector_Order_Mapper {
 			$payload['billingAddress'] = $billing;
 		}
 
-		$ship_total = (float) $order->get_shipping_total();
-		$ship_title = $order->get_shipping_method();
-		if ( $ship_total > 0 || '' !== (string) $ship_title ) {
-			$payload['shippingLines'] = array(
-				array(
-					'title'  => (string) ( $ship_title ? $ship_title : __( 'Shipping', 'wafi-connector' ) ),
-					'code'   => 'woocommerce',
-					'source' => 'woocommerce',
-					'price'  => $ship_total,
-				),
-			);
+		$shipping_lines = self::shipping_lines( $order );
+		if ( ! empty( $shipping_lines ) ) {
+			$payload['shippingLines'] = $shipping_lines;
 		}
 
 		$blob        = Wafi_Connector_Attribution::get( $order );
@@ -113,11 +105,49 @@ class Wafi_Connector_Order_Mapper {
 			);
 		}
 		// Guarantee at least one line — the platform rejects an empty order.
+		// Tax and shipping travel in their own fields (totalTax + shippingLines),
+		// so this synthetic line must carry ONLY the remaining ex-tax, ex-shipping
+		// amount (e.g. a fee-only order) or the platform double-counts them.
 		if ( empty( $lines ) ) {
-			$lines[] = array(
+			$residual = (float) $order->get_total() - (float) $order->get_total_tax() - (float) $order->get_shipping_total();
+			$lines[]  = array(
 				'title'    => __( 'WooCommerce order', 'wafi-connector' ),
 				'quantity' => 1,
-				'price'    => (float) $order->get_total(),
+				'price'    => (float) max( 0, round( $residual, 2 ) ),
+			);
+		}
+		return $lines;
+	}
+
+	/**
+	 * One platform shipping line per WooCommerce shipping method, carrying the
+	 * method's identity so the platform can map it to a shipping rate/zone (or
+	 * reconcile later) instead of a hardcoded label. `code` encodes the WC
+	 * method + instance (e.g. "flat_rate:3"), which the platform connector can
+	 * resolve to a ShippingRate; unmatched, it stays a faithful mirror line.
+	 * `price` is the ex-tax method total (shipping tax stays in totalTax), so
+	 * the platform's sum(shippingLines.price) still equals get_shipping_total().
+	 *
+	 * @param WC_Order $order
+	 * @return array
+	 */
+	private static function shipping_lines( WC_Order $order ) {
+		$lines = array();
+		foreach ( $order->get_shipping_methods() as $item ) {
+			/** @var WC_Order_Item_Shipping $item */
+			$method_id   = is_callable( array( $item, 'get_method_id' ) ) ? (string) $item->get_method_id() : '';
+			$instance_id = is_callable( array( $item, 'get_instance_id' ) ) ? (string) $item->get_instance_id() : '';
+			$title       = $item->get_name() ? $item->get_name() : __( 'Shipping', 'wafi-connector' );
+
+			$code = '' !== $method_id
+				? $method_id . ( '' !== $instance_id ? ':' . $instance_id : '' )
+				: 'woocommerce';
+
+			$lines[] = array(
+				'title'  => (string) $title,
+				'code'   => substr( $code, 0, 64 ),
+				'source' => 'woocommerce',
+				'price'  => (float) $item->get_total(), // ex-tax
 			);
 		}
 		return $lines;
