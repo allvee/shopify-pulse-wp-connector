@@ -42,22 +42,49 @@ class Wafi_Connector_Catalog_Sync {
 	}
 
 	public function register() {
-		if ( ! $this->settings->get( 'enable_catalog_sync' ) ) {
-			return;
-		}
-		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
-		if ( 'push' === $dir || 'both' === $dir ) {
+		// Categories and brands are independently toggled + directioned. The term
+		// hooks are shared (WordPress fires created_term/edited_term for every
+		// taxonomy), so register them if EITHER entity pushes; on_term() then
+		// gates per-taxonomy. Likewise the pull cron is added if EITHER pulls.
+		$cat_push   = $this->cat_enabled() && $this->dir_pushes( $this->cat_dir() );
+		$brand_push = $this->brand_enabled() && $this->dir_pushes( $this->brand_dir() );
+		$cat_pull   = $this->cat_enabled() && $this->dir_pulls( $this->cat_dir() );
+		$brand_pull = $this->brand_enabled() && $this->dir_pulls( $this->brand_dir() );
+
+		if ( $cat_push || $brand_push ) {
 			add_action( 'created_term', array( $this, 'on_term' ), 20, 3 );
 			add_action( 'edited_term', array( $this, 'on_term' ), 20, 3 );
 			add_action( WAFI_CONNECTOR_TERM_SYNC_ACTION, array( $this, 'handle_term' ), 10, 2 );
 		}
-		if ( 'pull' === $dir || 'both' === $dir ) {
+		if ( $cat_pull || $brand_pull ) {
 			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
 		}
 	}
 
+	private function cat_enabled() {
+		return (bool) $this->settings->get( 'enable_category_sync' );
+	}
+	private function cat_dir() {
+		return $this->settings->get( 'category_sync_dir', 'push' );
+	}
+	private function brand_enabled() {
+		return (bool) $this->settings->get( 'enable_brand_sync' );
+	}
+	private function brand_dir() {
+		return $this->settings->get( 'brand_sync_dir', 'push' );
+	}
+	private function dir_pushes( $dir ) {
+		return 'push' === $dir || 'both' === $dir;
+	}
+	private function dir_pulls( $dir ) {
+		return 'pull' === $dir || 'both' === $dir;
+	}
+	private function is_brand_tax( $taxonomy ) {
+		return in_array( $taxonomy, self::$brand_tax, true );
+	}
+
 	public function on_term( $term_id, $tt_id, $taxonomy ) {
-		if ( self::$suppress || ! $this->is_synced_tax( $taxonomy ) ) {
+		if ( self::$suppress || ! $this->tax_pushes( $taxonomy ) ) {
 			return;
 		}
 		$args = array( (int) $term_id, (string) $taxonomy );
@@ -134,8 +161,18 @@ class Wafi_Connector_Catalog_Sync {
 		$this->logger->debug( 'Term ' . $term_id . ' (' . $taxonomy . ') synced.' );
 	}
 
-	private function is_synced_tax( $taxonomy ) {
-		return in_array( $taxonomy, self::$cat_tax, true ) || in_array( $taxonomy, self::$brand_tax, true );
+	/**
+	 * Whether a change to this taxonomy should be pushed right now — i.e. it is
+	 * one of our taxonomies AND its entity is enabled with a push direction.
+	 */
+	private function tax_pushes( $taxonomy ) {
+		if ( $this->is_brand_tax( $taxonomy ) ) {
+			return $this->brand_enabled() && $this->dir_pushes( $this->brand_dir() );
+		}
+		if ( in_array( $taxonomy, self::$cat_tax, true ) ) {
+			return $this->cat_enabled() && $this->dir_pushes( $this->cat_dir() );
+		}
+		return false;
 	}
 
 	private function term_image( $term_id ) {
@@ -152,14 +189,14 @@ class Wafi_Connector_Catalog_Sync {
 	// ── Pull (platform → WooCommerce) ───────────────────────────────────────
 
 	public function pull() {
-		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
-		if ( 'pull' !== $dir && 'both' !== $dir ) {
-			return;
+		if ( $this->cat_enabled() && $this->dir_pulls( $this->cat_dir() ) ) {
+			$this->pull_taxonomy( '/connect/categories', 'categories', 'product_cat', 'cat' );
 		}
-		$this->pull_taxonomy( '/connect/categories', 'categories', 'product_cat', 'cat' );
-		$brand_tax = $this->target_brand_tax();
-		if ( $brand_tax ) {
-			$this->pull_taxonomy( '/connect/brands', 'brands', $brand_tax, 'brand' );
+		if ( $this->brand_enabled() && $this->dir_pulls( $this->brand_dir() ) ) {
+			$brand_tax = $this->target_brand_tax();
+			if ( $brand_tax ) {
+				$this->pull_taxonomy( '/connect/brands', 'brands', $brand_tax, 'brand' );
+			}
 		}
 	}
 

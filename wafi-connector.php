@@ -32,6 +32,7 @@ define( 'WAFI_CONNECTOR_TOKEN_TRANSIENT', 'wafi_connector_token' );
 define( 'WAFI_CONNECTOR_AS_GROUP', 'wafi-connector' );
 define( 'WAFI_CONNECTOR_SYNC_ACTION', 'wafi_connector_sync_order' );
 define( 'WAFI_CONNECTOR_ABANDONED_CRON', 'wafi_connector_abandoned_sweep' );
+define( 'WAFI_CONNECTOR_ABANDONED_PUSH_ACTION', 'wafi_connector_abandoned_push' );
 define( 'WAFI_CONNECTOR_POLL_CRON', 'wafi_connector_status_poll' );
 define( 'WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION', 'wafi_connector_sync_customer' );
 define( 'WAFI_CONNECTOR_CUSTOMER_PULL_CRON', 'wafi_connector_customer_pull' );
