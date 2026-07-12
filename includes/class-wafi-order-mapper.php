@@ -28,6 +28,36 @@ class Wafi_Connector_Order_Mapper {
 			$financial = 'pending';
 		}
 
+		// Product lines + order fees. Positive fees (COD fee, gift wrap) become
+		// extra line items; negative fees (gift card, store credit, smart-coupon)
+		// become an order-level discount — so the mirrored total still
+		// reconstructs on the platform without an OrderFee model.
+		$lines        = self::line_items( $order );
+		$fee_discount = 0.0;
+		foreach ( $order->get_fees() as $fee ) {
+			$amt = round( (float) $fee->get_total(), 2 ); // ex-tax; can be negative
+			if ( $amt < 0 ) {
+				$fee_discount += -$amt;
+			} elseif ( $amt > 0 ) {
+				$lines[] = array(
+					'title'    => $fee->get_name() ? $fee->get_name() : __( 'Fee', 'wafi-connector' ),
+					'quantity' => 1,
+					'price'    => $amt,
+				);
+			}
+		}
+		// Guarantee at least one line. Tax + shipping travel in their own fields
+		// and the negative-fee discount is applied separately, so this residual
+		// carries only the remaining amount (gross of that discount).
+		if ( empty( $lines ) ) {
+			$residual = (float) $order->get_total() - (float) $order->get_total_tax() - (float) $order->get_shipping_total() + $fee_discount;
+			$lines[]  = array(
+				'title'    => __( 'WooCommerce order', 'wafi-connector' ),
+				'quantity' => 1,
+				'price'    => (float) max( 0, round( $residual, 2 ) ),
+			);
+		}
+
 		$payload = array(
 			'externalSource'   => 'woocommerce',
 			'externalId'       => (string) $order->get_id(),
@@ -40,7 +70,7 @@ class Wafi_Connector_Order_Mapper {
 			'fulfillmentStatus' => ( 'completed' === $status ) ? 'fulfilled' : 'unfulfilled',
 			'wcStatus'         => $status,
 			'paymentGateway'   => substr( (string) ( $order->get_payment_method() ?: 'external' ), 0, 32 ),
-			'lineItems'        => self::line_items( $order ),
+			'lineItems'        => $lines,
 			'totalTax'         => (float) $order->get_total_tax(),
 			// Authoritative WooCommerce aggregates. The platform re-derives the
 			// total from the lines above; it uses orderTotal purely as a checksum
@@ -51,6 +81,19 @@ class Wafi_Connector_Order_Mapper {
 			'orderDiscountTotal' => (float) $order->get_total_discount(),
 			'note'             => $order->get_customer_note() ?: null,
 		);
+
+		// Negative-fee discount (gift card / store credit) as an order-level
+		// manual discount — the connector suppresses platform auto-discounts, so
+		// this is the only discount stacked on the mirror.
+		if ( $fee_discount > 0 ) {
+			$payload['discount'] = array( 'amount' => round( $fee_discount, 2 ), 'type' => 'amount' );
+		}
+		// Cumulative refunded amount → the platform books the delta and mirrors a
+		// partial refund as partially_refunded (full as refunded).
+		$refunded = (float) $order->get_total_refunded();
+		if ( $refunded > 0 ) {
+			$payload['refundedAmount'] = round( $refunded, 2 );
+		}
 
 		$shipping = self::address( $order, 'shipping' );
 		if ( null === $shipping ) {
@@ -111,18 +154,8 @@ class Wafi_Connector_Order_Mapper {
 				'totalDiscount' => (float) max( 0, round( $subtotal - $total, 2 ) ),
 			);
 		}
-		// Guarantee at least one line — the platform rejects an empty order.
-		// Tax and shipping travel in their own fields (totalTax + shippingLines),
-		// so this synthetic line must carry ONLY the remaining ex-tax, ex-shipping
-		// amount (e.g. a fee-only order) or the platform double-counts them.
-		if ( empty( $lines ) ) {
-			$residual = (float) $order->get_total() - (float) $order->get_total_tax() - (float) $order->get_shipping_total();
-			$lines[]  = array(
-				'title'    => __( 'WooCommerce order', 'wafi-connector' ),
-				'quantity' => 1,
-				'price'    => (float) max( 0, round( $residual, 2 ) ),
-			);
-		}
+		// The "at least one line" guarantee lives in map(), after fees are folded
+		// in (an itemless order may still carry fees) — return product lines only.
 		return $lines;
 	}
 
