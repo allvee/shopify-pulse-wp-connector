@@ -42,6 +42,13 @@ class Wafi_Connector_Order_Mapper {
 			'paymentGateway'   => substr( (string) ( $order->get_payment_method() ?: 'external' ), 0, 32 ),
 			'lineItems'        => self::line_items( $order ),
 			'totalTax'         => (float) $order->get_total_tax(),
+			// Authoritative WooCommerce aggregates. The platform re-derives the
+			// total from the lines above; it uses orderTotal purely as a checksum
+			// and raises a reconciliation alert when the two disagree (a dropped
+			// fee, a platform-only discount, tax drift), never overriding it.
+			'orderTotal'         => (float) $order->get_total(),
+			'orderSubtotal'      => (float) $order->get_subtotal(),
+			'orderDiscountTotal' => (float) $order->get_total_discount(),
 			'note'             => $order->get_customer_note() ?: null,
 		);
 
