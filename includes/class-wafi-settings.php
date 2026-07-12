@@ -40,6 +40,7 @@ class Wafi_Connector_Settings {
 			'customer_sync_dir'     => 'both',
 			'enable_catalog_sync'   => 0,
 			'catalog_sync_dir'      => 'push',
+			'product_sync_dir'      => 'both',
 			'order_statuses'        => array( 'pending', 'on-hold', 'processing', 'completed', 'refunded', 'cancelled', 'failed' ),
 			'abandoned_idle_min'    => 30,
 			'allow_status_writeback' => 0,
@@ -163,6 +164,8 @@ class Wafi_Connector_Settings {
 		$clean['enable_catalog_sync']   = empty( $raw['enable_catalog_sync'] ) ? 0 : 1;
 		$cat_dir                        = isset( $raw['catalog_sync_dir'] ) ? sanitize_key( $raw['catalog_sync_dir'] ) : 'push';
 		$clean['catalog_sync_dir']      = in_array( $cat_dir, array( 'push', 'pull', 'both' ), true ) ? $cat_dir : 'push';
+		$prod_dir                       = isset( $raw['product_sync_dir'] ) ? sanitize_key( $raw['product_sync_dir'] ) : 'both';
+		$clean['product_sync_dir']      = in_array( $prod_dir, array( 'push', 'pull', 'both' ), true ) ? $prod_dir : 'both';
 		$clean['allow_status_writeback'] = empty( $raw['allow_status_writeback'] ) ? 0 : 1;
 		$clean['debug_log']             = empty( $raw['debug_log'] ) ? 0 : 1;
 		$clean['abandoned_idle_min']    = max( 5, absint( isset( $raw['abandoned_idle_min'] ) ? $raw['abandoned_idle_min'] : 30 ) );
@@ -374,7 +377,15 @@ class Wafi_Connector_Settings {
 									<option value="pull" <?php selected( $s['catalog_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce (later release)', 'wafi-connector' ); ?></option>
 								</select>
 							</p>
-							<p class="description"><?php esc_html_e( 'Categories carry hierarchy + SEO. Products/variants land in a later release. Requires brands.write, categories.write, collections.write scopes.', 'wafi-connector' ); ?></p>
+							<p style="margin-top:6px;">
+								<label for="wafi_prod_dir"><?php esc_html_e( 'Products & variants direction:', 'wafi-connector' ); ?></label>
+								<select name="wafi[product_sync_dir]" id="wafi_prod_dir">
+									<option value="both" <?php selected( $s['product_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'wafi-connector' ); ?></option>
+									<option value="push" <?php selected( $s['product_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
+									<option value="pull" <?php selected( $s['product_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'wafi-connector' ); ?></option>
+								</select>
+							</p>
+							<p class="description"><?php esc_html_e( 'Categories/brands and products have independent sync directions. Requires products.write, brands.write, categories.write, collections.write scopes.', 'wafi-connector' ); ?></p>
 						</td>
 					</tr>
 					<tr>

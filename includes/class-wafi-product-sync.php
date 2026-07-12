@@ -41,7 +41,7 @@ class Wafi_Connector_Product_Sync {
 		if ( ! $this->settings->get( 'enable_catalog_sync' ) ) {
 			return;
 		}
-		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
+		$dir = $this->settings->get( 'product_sync_dir', 'both' );
 		if ( 'push' === $dir || 'both' === $dir ) {
 			add_action( 'woocommerce_new_product', array( $this, 'on_product' ), 20, 1 );
 			add_action( 'woocommerce_update_product', array( $this, 'on_product' ), 20, 1 );
@@ -257,7 +257,7 @@ class Wafi_Connector_Product_Sync {
 	// ── Pull (platform → WooCommerce) ───────────────────────────────────────
 
 	public function pull() {
-		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
+		$dir = $this->settings->get( 'product_sync_dir', 'both' );
 		if ( ( 'pull' !== $dir && 'both' !== $dir ) || ! function_exists( 'wc_get_product' ) ) {
 			return;
 		}
