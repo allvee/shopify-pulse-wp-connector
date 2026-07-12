@@ -15,13 +15,22 @@ class Wafi_Connector_Order_Mapper {
 
 	/**
 	 * @param WC_Order $order
+	 * @param bool     $is_backfill When true (Sync-now / past orders) mirror the
+	 *                 WooCommerce status verbatim; when false (a live order) a
+	 *                 COD order still in "processing" is reported as unpaid,
+	 *                 since cash-on-delivery isn't collected until delivery.
 	 * @return array
 	 */
-	public static function map( WC_Order $order ) {
+	public static function map( WC_Order $order, $is_backfill = false ) {
 		$status = $order->get_status(); // no "wc-" prefix
+		$is_cod = 'cod' === $order->get_payment_method();
 
 		if ( 'refunded' === $status ) {
 			$financial = 'refunded';
+		} elseif ( ! $is_backfill && $is_cod && 'processing' === $status ) {
+			// Live COD order in processing: payment is collected on delivery, so
+			// it's pending, not paid. Backfilled/past orders are mirrored as-is.
+			$financial = 'pending';
 		} elseif ( $order->is_paid() || in_array( $status, array( 'processing', 'completed' ), true ) ) {
 			$financial = 'paid';
 		} else {
