@@ -362,12 +362,52 @@ class Wafi_Connector_Settings {
 		);
 	}
 
+	/**
+	 * Data for the shipping-mapping card: the store's WooCommerce shipping
+	 * methods (keyed by "<method_id>:<instance_id>" — the shipping line code)
+	 * and the platform's shipping rates (fetched once, fail-soft).
+	 *
+	 * @return array{0:array<string,string>,1:array}
+	 */
+	private function shipping_map_data() {
+		$methods = array();
+		if ( class_exists( 'WC_Shipping_Zones' ) ) {
+			$list = array();
+			foreach ( WC_Shipping_Zones::get_zones() as $z ) {
+				$list[] = array( 'name' => $z['zone_name'], 'methods' => $z['shipping_methods'] );
+			}
+			$rest = WC_Shipping_Zones::get_zone( 0 );
+			if ( $rest ) {
+				$list[] = array( 'name' => __( 'Rest of the World', 'wafi-connector' ), 'methods' => $rest->get_shipping_methods() );
+			}
+			foreach ( $list as $z ) {
+				foreach ( (array) $z['methods'] as $mobj ) {
+					if ( ! is_object( $mobj ) || ! isset( $mobj->id ) ) {
+						continue;
+					}
+					$key             = $mobj->id . ':' . $mobj->instance_id;
+					$methods[ $key ] = $z['name'] . ' — ' . $mobj->get_title();
+				}
+			}
+		}
+
+		$rates = array();
+		if ( $this->is_configured() ) {
+			$res = Wafi_Connector_Plugin::instance()->api()->get( '/connect/shipping-rates' );
+			if ( ! is_wp_error( $res ) && isset( $res['rates'] ) && is_array( $res['rates'] ) ) {
+				$rates = $res['rates'];
+			}
+		}
+		return array( $methods, $rates );
+	}
+
 	public function render_page() {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			return;
 		}
 		$s          = $this->all();
 		$wc_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : array();
+		list( $ship_methods, $ship_rates ) = $this->shipping_map_data();
 		settings_errors( 'wafi_connector' );
 		?>
 		<?php
@@ -600,6 +640,38 @@ class Wafi_Connector_Settings {
 								<label class="wafi-check"><input type="checkbox" name="wafi[allow_status_writeback]" value="1" <?php checked( $s['allow_status_writeback'] ); ?> /> <?php esc_html_e( 'Let the platform update WooCommerce order status', 'wafi-connector' ); ?></label>
 								<label class="wafi-check"><input type="checkbox" name="wafi[debug_log]" value="1" <?php checked( $s['debug_log'] ); ?> /> <?php esc_html_e( 'Verbose debug logging (WooCommerce › Status › Logs)', 'wafi-connector' ); ?></label>
 							</div>
+						</div>
+					</div>
+
+					<div class="wafi-card">
+						<div class="wafi-card__head"><span class="dashicons dashicons-location"></span><?php esc_html_e( 'Shipping mapping', 'wafi-connector' ); ?></div>
+						<div class="wafi-card__body">
+							<?php if ( empty( $ship_methods ) ) : ?>
+								<p class="description" style="margin-top:0;"><?php esc_html_e( 'No WooCommerce shipping methods found. Add zones + methods in WooCommerce › Settings › Shipping.', 'wafi-connector' ); ?></p>
+							<?php else : ?>
+								<p class="description" style="margin-top:0;"><?php esc_html_e( 'Map each WooCommerce shipping method to a platform shipping rate. Mapped charges link to that rate on the platform; unmapped ones raise a reconciliation alert.', 'wafi-connector' ); ?></p>
+								<?php $map = (array) $s['shipping_map']; ?>
+								<?php foreach ( $ship_methods as $key => $label ) : ?>
+									<div class="wafi-field">
+										<label class="h"><?php echo esc_html( $label ); ?> <span class="description">(<?php echo esc_html( $key ); ?>)</span></label>
+										<?php if ( ! empty( $ship_rates ) ) : ?>
+											<select name="wafi[shipping_map][<?php echo esc_attr( $key ); ?>]">
+												<option value="0"><?php esc_html_e( '— not mapped —', 'wafi-connector' ); ?></option>
+												<?php foreach ( $ship_rates as $r ) : $rid = isset( $r['id'] ) ? (int) $r['id'] : 0; ?>
+													<option value="<?php echo esc_attr( $rid ); ?>" <?php selected( isset( $map[ $key ] ) ? (int) $map[ $key ] : 0, $rid ); ?>>
+														<?php echo esc_html( ( isset( $r['zoneName'] ) ? $r['zoneName'] . ' / ' : '' ) . ( isset( $r['name'] ) ? $r['name'] : '' ) . ( isset( $r['amount'] ) ? ' (' . $r['amount'] . ')' : '' ) ); ?>
+													</option>
+												<?php endforeach; ?>
+											</select>
+										<?php else : ?>
+											<input type="number" min="0" name="wafi[shipping_map][<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( isset( $map[ $key ] ) ? $map[ $key ] : '' ); ?>" placeholder="<?php esc_attr_e( 'platform rate id', 'wafi-connector' ); ?>" class="small-text" />
+										<?php endif; ?>
+									</div>
+								<?php endforeach; ?>
+								<?php if ( empty( $ship_rates ) ) : ?>
+									<p class="description"><?php esc_html_e( 'Could not load platform rates — Verify the connection, or create shipping rates on the platform first. You can enter rate ids manually meanwhile.', 'wafi-connector' ); ?></p>
+								<?php endif; ?>
+							<?php endif; ?>
 						</div>
 					</div>
 
