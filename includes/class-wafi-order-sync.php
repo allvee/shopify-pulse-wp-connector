@@ -31,7 +31,7 @@ class Wafi_Connector_Order_Sync {
 	public function register() {
 		add_action( 'woocommerce_new_order', array( $this, 'on_new_order' ), 20, 1 );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'on_status_changed' ), 20, 4 );
-		add_action( WAFI_CONNECTOR_SYNC_ACTION, array( $this, 'handle_job' ), 10, 1 );
+		add_action( WAFI_CONNECTOR_SYNC_ACTION, array( $this, 'handle_job' ), 10, 2 );
 	}
 
 	public function on_new_order( $order_id ) {
@@ -45,7 +45,7 @@ class Wafi_Connector_Order_Sync {
 	/**
 	 * Queue (or, without Action Scheduler, run) a push for an order.
 	 */
-	public function enqueue( $order_id ) {
+	public function enqueue( $order_id, $is_backfill = false ) {
 		if ( ! $this->settings->get( 'enable_orders' ) ) {
 			return;
 		}
@@ -62,20 +62,21 @@ class Wafi_Connector_Order_Sync {
 			return;
 		}
 
+		$args = array( $order_id, $is_backfill ? 1 : 0 );
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( WAFI_CONNECTOR_SYNC_ACTION, array( $order_id ), WAFI_CONNECTOR_AS_GROUP ) ) {
+				&& as_has_scheduled_action( WAFI_CONNECTOR_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP ) ) {
 				return; // already queued
 			}
-			as_enqueue_async_action( WAFI_CONNECTOR_SYNC_ACTION, array( $order_id ), WAFI_CONNECTOR_AS_GROUP );
+			as_enqueue_async_action( WAFI_CONNECTOR_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP );
 		} else {
-			$this->push_order( $order_id );
+			$this->push_order( $order_id, (bool) $is_backfill );
 		}
 	}
 
 	/** Action Scheduler callback. */
-	public function handle_job( $order_id ) {
-		$this->push_order( (int) $order_id );
+	public function handle_job( $order_id, $is_backfill = 0 ) {
+		$this->push_order( (int) $order_id, (bool) $is_backfill );
 	}
 
 	/**
@@ -103,7 +104,7 @@ class Wafi_Connector_Order_Sync {
 		$ids = wc_get_orders( $args );
 		$n   = 0;
 		foreach ( (array) $ids as $id ) {
-			$this->enqueue( (int) $id );
+			$this->enqueue( (int) $id, true ); // backfill: mirror WooCommerce status as-is
 			$n++;
 		}
 		$this->logger->debug( 'Backfill queued ' . $n . ' orders.' );
@@ -114,7 +115,7 @@ class Wafi_Connector_Order_Sync {
 	 * Build + send the order. Skips when the payload is byte-identical to the
 	 * last successful push (status polls / meta saves won't re-send).
 	 */
-	public function push_order( $order_id ) {
+	public function push_order( $order_id, $is_backfill = false ) {
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
 			return;
@@ -123,7 +124,7 @@ class Wafi_Connector_Order_Sync {
 			return;
 		}
 
-		$payload = Wafi_Connector_Order_Mapper::map( $order );
+		$payload = Wafi_Connector_Order_Mapper::map( $order, (bool) $is_backfill );
 		$hash    = md5( (string) wp_json_encode( $payload ) );
 		if ( $order->get_meta( WAFI_CONNECTOR_META_HASH ) === $hash ) {
 			$this->logger->debug( 'Order ' . $order_id . ' unchanged since last sync — skipping.' );
