@@ -3,7 +3,7 @@
  * Plugin Name:       Wafi Commerce Connector
  * Plugin URI:        https://github.com/wafiperfume/wafi-wp-connector
  * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Wafi Commerce platform so a store can be managed from there. Connects any WooCommerce site to one Wafi store via OAuth.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Wafi Commerce
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'WAFI_CONNECTOR_VERSION', '1.0.0' );
+define( 'WAFI_CONNECTOR_VERSION', '1.1.0' );
 define( 'WAFI_CONNECTOR_FILE', __FILE__ );
 define( 'WAFI_CONNECTOR_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WAFI_CONNECTOR_URL', plugin_dir_url( __FILE__ ) );
@@ -90,6 +90,9 @@ add_action(
 			);
 			return;
 		}
+		// Self-heal DB table + crons after an update-in-place (the activation
+		// hook doesn't fire when plugin files are replaced).
+		Wafi_Connector_Install::maybe_upgrade();
 		Wafi_Connector_Plugin::instance()->init();
 	},
 	20

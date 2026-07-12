@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,6 +54,19 @@ No — one WooCommerce site connects to one Wafi store (one OAuth app = one
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.1.0 =
+* Redesigned settings dashboard with live analytics KPIs.
+* Independent two-way sync per entity (categories, brands, products,
+  customers) each with its own on/off + push/pull/both direction.
+* Courier delivery-ratio checkout gate (block orders below a threshold).
+* Shipping mapping: map each WooCommerce shipping method to a platform
+  shipping rate; delivery charges link to the rate on the platform.
+* Faithful order money mirroring: fees + gift-cards, partial refunds,
+  authoritative totals for platform-side reconciliation.
+* COD orders mirror as unpaid until delivered; instant abandoned-cart
+  push; order-push retry with backoff; two-way SEO redirects.
+* Self-heals its table + cron schedules on update-in-place.
 
 = 1.0.0 =
 * Initial release: order push, abandoned-cart sweep, analytics forwarding,
