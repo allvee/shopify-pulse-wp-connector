@@ -139,6 +139,7 @@ class Wafi_Connector_Order_Mapper {
 	 * @return array
 	 */
 	private static function shipping_lines( WC_Order $order ) {
+		$map   = self::shipping_map();
 		$lines = array();
 		foreach ( $order->get_shipping_methods() as $item ) {
 			/** @var WC_Order_Item_Shipping $item */
@@ -150,14 +151,37 @@ class Wafi_Connector_Order_Mapper {
 				? $method_id . ( '' !== $instance_id ? ':' . $instance_id : '' )
 				: 'woocommerce';
 
-			$lines[] = array(
+			$line = array(
 				'title'  => (string) $title,
 				'code'   => substr( $code, 0, 64 ),
 				'source' => 'woocommerce',
 				'price'  => (float) $item->get_total(), // ex-tax
 			);
+			// If the operator mapped this WC method to a platform shipping rate,
+			// tag it so the platform links the delivery charge to that rate
+			// (else the platform raises an unmapped-shipping reconcile alert).
+			$rate_id = isset( $map[ $code ] ) ? (int) $map[ $code ] : 0;
+			if ( $rate_id > 0 ) {
+				$line['shippingRateId'] = $rate_id;
+			}
+
+			$lines[] = $line;
 		}
 		return $lines;
+	}
+
+	/**
+	 * The operator's WooCommerce-method → platform-shipping-rate map, keyed by
+	 * "<method_id>:<instance_id>" (the shipping line `code`). Stored in the
+	 * connector settings option.
+	 *
+	 * @return array<string,int>
+	 */
+	private static function shipping_map() {
+		$opt = get_option( WAFI_CONNECTOR_OPTION, array() );
+		return ( is_array( $opt ) && isset( $opt['shipping_map'] ) && is_array( $opt['shipping_map'] ) )
+			? $opt['shipping_map']
+			: array();
 	}
 
 	/**

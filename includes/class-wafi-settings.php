@@ -44,6 +44,9 @@ class Wafi_Connector_Settings {
 			'abandoned_idle_min'    => 30,
 			'allow_status_writeback' => 0,
 			'debug_log'             => 0,
+			// WooCommerce-method → platform-shipping-rate map, keyed by the
+			// shipping line code "<method_id>:<instance_id>" → platform rate id.
+			'shipping_map'          => array(),
 		);
 	}
 
@@ -169,6 +172,21 @@ class Wafi_Connector_Settings {
 
 		$statuses = isset( $raw['order_statuses'] ) && is_array( $raw['order_statuses'] ) ? $raw['order_statuses'] : array();
 		$clean['order_statuses'] = array_values( array_map( 'sanitize_key', $statuses ) );
+
+		// Shipping-rate map: keep only "code => positive rate id" entries. When
+		// the form doesn't post a map, preserve the stored one (so a map set by
+		// a future UI / filter isn't wiped by an unrelated save).
+		if ( isset( $raw['shipping_map'] ) && is_array( $raw['shipping_map'] ) ) {
+			$clean['shipping_map'] = array();
+			foreach ( $raw['shipping_map'] as $code => $rate_id ) {
+				$rid = absint( $rate_id );
+				if ( $rid > 0 ) {
+					$clean['shipping_map'][ substr( sanitize_text_field( (string) $code ), 0, 64 ) ] = $rid;
+				}
+			}
+		} else {
+			$clean['shipping_map'] = isset( $existing['shipping_map'] ) && is_array( $existing['shipping_map'] ) ? $existing['shipping_map'] : array();
+		}
 
 		update_option( WAFI_CONNECTOR_OPTION, $clean );
 		$this->cache = null;
