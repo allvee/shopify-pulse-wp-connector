@@ -46,6 +46,11 @@ class Wafi_Connector_Seo_Sync {
 		if ( 'pull' === $dir || 'both' === $dir ) {
 			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
 		}
+		if ( 'push' === $dir || 'both' === $dir ) {
+			// Push WordPress-authored redirects (from the active redirect plugin)
+			// up to the platform, on the same tick as the pull.
+			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'push_redirects' ) );
+		}
 	}
 
 	/** Cron: refresh the redirect + robots caches from the platform. */
@@ -129,5 +134,134 @@ class Wafi_Connector_Seo_Sync {
 			}
 		}
 		return $output;
+	}
+
+	// ── Push (WooCommerce → platform) ───────────────────────────────────────
+
+	const PUSH_HASHES_OPTION = 'wafi_redirect_push_hashes';
+
+	/**
+	 * Cron: read WordPress-authored redirects from whichever SEO/redirect plugin
+	 * is active and push changed ones to the platform. Hash-gated per path so
+	 * unchanged rules never re-send. Platform-managed redirects (applied via
+	 * template_redirect, never written into a WP plugin) aren't read here, so
+	 * there is no ping-pong.
+	 */
+	public function push_redirects() {
+		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
+		if ( 'push' !== $dir && 'both' !== $dir ) {
+			return;
+		}
+		$rules = $this->read_wp_redirects();
+		if ( empty( $rules ) ) {
+			return;
+		}
+		$hashes = get_option( self::PUSH_HASHES_OPTION, array() );
+		if ( ! is_array( $hashes ) ) {
+			$hashes = array();
+		}
+		$changed = false;
+		foreach ( $rules as $r ) {
+			$payload = array(
+				'path'     => $r['path'],
+				'target'   => $r['target'],
+				'code'     => $r['code'],
+				'isActive' => $r['isActive'],
+			);
+			$hash = md5( (string) wp_json_encode( $payload ) );
+			if ( isset( $hashes[ $r['path'] ] ) && $hashes[ $r['path'] ] === $hash ) {
+				continue;
+			}
+			$res = $this->api->post( '/connect/redirects', $payload );
+			if ( is_wp_error( $res ) ) {
+				$this->logger->error( 'Redirect push failed for ' . $r['path'] . ': ' . $res->get_error_message() );
+				continue;
+			}
+			$hashes[ $r['path'] ] = $hash;
+			$changed              = true;
+		}
+		if ( $changed ) {
+			update_option( self::PUSH_HASHES_OPTION, $hashes, false );
+		}
+	}
+
+	/**
+	 * Normalize redirects from the active redirect plugin. Returns
+	 * [ [path, target, code, isActive], … ] with only exact-path (non-regex)
+	 * rules — those map cleanly to the platform's (sid, path) redirect.
+	 *
+	 * @return array
+	 */
+	private function read_wp_redirects() {
+		global $wpdb;
+		$out = array();
+
+		// Rank Math — table {prefix}rank_math_redirections.
+		$rm = $wpdb->prefix . 'rank_math_redirections';
+		if ( $rm === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $rm ) ) ) { // phpcs:ignore WordPress.DB
+			$rows = $wpdb->get_results( "SELECT sources, url_to, header_code, status FROM {$rm} WHERE status = 'active'" ); // phpcs:ignore WordPress.DB
+			foreach ( (array) $rows as $row ) {
+				$sources = maybe_unserialize( $row->sources );
+				foreach ( (array) $sources as $src ) {
+					$comparison = isset( $src['comparison'] ) ? $src['comparison'] : 'exact';
+					$pattern    = isset( $src['pattern'] ) ? $src['pattern'] : '';
+					if ( 'exact' !== $comparison || '' === $pattern ) {
+						continue;
+					}
+					$out[] = $this->norm_redirect( $pattern, $row->url_to, (int) $row->header_code, true );
+				}
+			}
+			return $this->dedupe_redirects( $out );
+		}
+
+		// Redirection plugin — table {prefix}redirection_items.
+		$ri = $wpdb->prefix . 'redirection_items';
+		if ( $ri === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $ri ) ) ) { // phpcs:ignore WordPress.DB
+			$rows = $wpdb->get_results( "SELECT url, action_data, action_code, match_type, action_type, status FROM {$ri} WHERE status = 'enabled' AND action_type = 'url' AND match_type = 'url'" ); // phpcs:ignore WordPress.DB
+			foreach ( (array) $rows as $row ) {
+				$target = is_string( $row->action_data ) ? $row->action_data : '';
+				if ( '' === $target ) {
+					continue;
+				}
+				$out[] = $this->norm_redirect( $row->url, $target, (int) $row->action_code, true );
+			}
+			return $this->dedupe_redirects( $out );
+		}
+
+		// Yoast Premium — option 'wpseo-premium-redirects-base'.
+		$yoast = get_option( 'wpseo-premium-redirects-base' );
+		if ( is_array( $yoast ) ) {
+			foreach ( $yoast as $origin => $rule ) {
+				$target = isset( $rule['url'] ) ? $rule['url'] : '';
+				$type   = isset( $rule['type'] ) ? (int) $rule['type'] : 301;
+				if ( '' === $target ) {
+					continue;
+				}
+				$out[] = $this->norm_redirect( $origin, $target, $type, true );
+			}
+			return $this->dedupe_redirects( $out );
+		}
+
+		return array();
+	}
+
+	private function norm_redirect( $path, $target, $code, $active ) {
+		$path = '/' . ltrim( (string) $path, '/' );
+		return array(
+			'path'     => substr( $path, 0, 1024 ),
+			'target'   => substr( (string) $target, 0, 1024 ),
+			'code'     => in_array( (int) $code, array( 301, 302 ), true ) ? (int) $code : 301,
+			'isActive' => (bool) $active,
+		);
+	}
+
+	private function dedupe_redirects( $rules ) {
+		$by_path = array();
+		foreach ( $rules as $r ) {
+			if ( '' !== $r['path'] && '' !== $r['target'] ) {
+				$by_path[ $r['path'] ] = $r; // last wins per path
+			}
+		}
+		return array_values( $by_path );
 	}
 }
