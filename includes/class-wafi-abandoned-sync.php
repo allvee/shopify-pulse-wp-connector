@@ -44,8 +44,9 @@ class Wafi_Connector_Abandoned_Sync {
 		// Drop the row once the cart converts.
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'mark_converted' ), 20 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'mark_converted_order' ), 20 );
-		// Sweep worker.
+		// Sweep worker + instant per-cart push.
 		add_action( WAFI_CONNECTOR_ABANDONED_CRON, array( $this, 'sweep' ) );
+		add_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $this, 'handle_push' ), 10, 1 );
 	}
 
 	/** Capture from the checkout AJAX review (carries email/phone early). */
@@ -122,6 +123,12 @@ class Wafi_Connector_Abandoned_Sync {
 			$data['created_at']  = $now;
 			$wpdb->insert( $table, $data ); // phpcs:ignore WordPress.DB
 		}
+
+		// Push instantly (async) when we can reach the shopper — don't wait for
+		// the sweep. Carts with no contact yet fall through to the sweep.
+		if ( ! empty( $email ) || ! empty( $phone ) ) {
+			$this->schedule_instant_push( $session_key );
+		}
 	}
 
 	private function current_email() {
@@ -187,26 +194,7 @@ class Wafi_Connector_Abandoned_Sync {
 				$wpdb->update( $table, array( 'synced' => 1 ), array( 'session_key' => $row->session_key ) ); // phpcs:ignore WordPress.DB
 				continue;
 			}
-			$payload = array(
-				'fingerprint'  => hash( 'sha256', $this->settings->get_sid() . '|' . $row->session_key ),
-				'email'        => $row->email ? $row->email : null,
-				'msisdn'       => $row->phone ? $row->phone : null,
-				'lines'        => $lines,
-				'subtotal'     => (float) $row->subtotal,
-				'currency'     => $row->currency ? $row->currency : 'BDT',
-				'furthestStep' => $row->furthest_step ? $row->furthest_step : 'contact',
-			);
-			$res = $this->api->post( '/connect/abandoned', $payload );
-			if ( is_wp_error( $res ) ) {
-				$this->logger->error( 'Abandoned push failed for ' . $row->session_key . ': ' . $res->get_error_message() );
-				continue; // leave synced=0 so a later sweep retries
-			}
-			$wpdb->update( // phpcs:ignore WordPress.DB
-				$table,
-				array( 'synced' => 1, 'synced_hash' => md5( (string) wp_json_encode( $payload ) ) ),
-				array( 'session_key' => $row->session_key )
-			);
-			$this->logger->debug( 'Abandoned cart ' . $row->session_key . ' pushed.' );
+			$this->push_row( $row );
 		}
 
 		// Garbage-collect carts that were abandoned long ago and never came
@@ -215,5 +203,66 @@ class Wafi_Connector_Abandoned_Sync {
 		$wpdb->query( // phpcs:ignore WordPress.DB
 			$wpdb->prepare( "DELETE FROM {$table} WHERE converted = 0 AND updated_at < %s", $gc_cutoff )
 		);
+	}
+
+	/** Build + send one abandoned-cart row to the platform. Returns bool. */
+	private function push_row( $row ) {
+		$lines = json_decode( $row->cart_json, true );
+		if ( empty( $lines ) || ! is_array( $lines ) || ( empty( $row->email ) && empty( $row->phone ) ) ) {
+			return false;
+		}
+		global $wpdb;
+		$payload = array(
+			'fingerprint'  => hash( 'sha256', $this->settings->get_sid() . '|' . $row->session_key ),
+			'email'        => $row->email ? $row->email : null,
+			'msisdn'       => $row->phone ? $row->phone : null,
+			'lines'        => $lines,
+			'subtotal'     => (float) $row->subtotal,
+			'currency'     => $row->currency ? $row->currency : 'BDT',
+			'furthestStep' => $row->furthest_step ? $row->furthest_step : 'contact',
+		);
+		$res = $this->api->post( '/connect/abandoned', $payload );
+		if ( is_wp_error( $res ) ) {
+			$this->logger->error( 'Abandoned push failed for ' . $row->session_key . ': ' . $res->get_error_message() );
+			return false; // leave synced=0 so a later sweep retries
+		}
+		$wpdb->update( // phpcs:ignore WordPress.DB
+			self::table_name(),
+			array( 'synced' => 1, 'synced_hash' => md5( (string) wp_json_encode( $payload ) ) ),
+			array( 'session_key' => $row->session_key )
+		);
+		$this->logger->debug( 'Abandoned cart ' . $row->session_key . ' pushed.' );
+		return true;
+	}
+
+	/**
+	 * Instant path: schedule an async push of this session's cart right after a
+	 * capture, so an abandoned cart reaches the platform in seconds instead of
+	 * waiting for the sweep. Debounced per session so rapid cart edits coalesce
+	 * into one call; the sweep remains the backstop for anything missed.
+	 */
+	private function schedule_instant_push( $session_key ) {
+		if ( empty( $session_key ) || ! function_exists( 'as_enqueue_async_action' ) ) {
+			return;
+		}
+		if ( function_exists( 'as_has_scheduled_action' )
+			&& as_has_scheduled_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $session_key ), WAFI_CONNECTOR_AS_GROUP ) ) {
+			return;
+		}
+		as_enqueue_async_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $session_key ), WAFI_CONNECTOR_AS_GROUP );
+	}
+
+	/** Action Scheduler callback: push one session's cart now. */
+	public function handle_push( $session_key ) {
+		if ( ! $this->settings->get( 'enable_abandoned' ) ) {
+			return;
+		}
+		global $wpdb;
+		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
+			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . ' WHERE session_key = %s AND converted = 0 AND synced = 0', $session_key )
+		);
+		if ( $row ) {
+			$this->push_row( $row );
+		}
 	}
 }

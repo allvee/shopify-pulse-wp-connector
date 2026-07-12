@@ -133,7 +133,7 @@ class Wafi_Connector_Order_Sync {
 
 		$res = $this->api->post( '/connect/orders', $payload );
 		if ( is_wp_error( $res ) ) {
-			$this->handle_failure( $order, $res );
+			$this->handle_failure( $order, $res, (bool) $is_backfill );
 			return;
 		}
 
@@ -151,7 +151,7 @@ class Wafi_Connector_Order_Sync {
 		);
 	}
 
-	private function handle_failure( WC_Order $order, WP_Error $err ) {
+	private function handle_failure( WC_Order $order, WP_Error $err, $is_backfill = false ) {
 		$attempts = (int) $order->get_meta( WAFI_CONNECTOR_META_ATTEMPTS ) + 1;
 		$order->update_meta_data( WAFI_CONNECTOR_META_ATTEMPTS, $attempts );
 		$order->save();
@@ -165,7 +165,7 @@ class Wafi_Connector_Order_Sync {
 			as_schedule_single_action(
 				time() + $delay,
 				WAFI_CONNECTOR_SYNC_ACTION,
-				array( $order->get_id() ),
+				array( $order->get_id(), $is_backfill ? 1 : 0 ), // preserve backfill flag on retry
 				WAFI_CONNECTOR_AS_GROUP
 			);
 		}
