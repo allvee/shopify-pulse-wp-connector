@@ -40,6 +40,18 @@ class Wafi_Connector_Settings {
 			'courier_min_parcels'   => 3,
 			'enable_customer_sync'  => 0,
 			'customer_sync_dir'     => 'both',
+			// Catalog is three independently-controlled entities, each with its
+			// own on/off + direction (mirrors the platform, which already splits
+			// them by route + scope: /connect/categories, /connect/brands,
+			// /connect/products).
+			'enable_category_sync'  => 0,
+			'category_sync_dir'     => 'push',
+			'enable_brand_sync'     => 0,
+			'brand_sync_dir'        => 'push',
+			'enable_product_sync'   => 0,
+			'product_sync_dir'      => 'both',
+			// Legacy bundled switch — kept only so a pre-split install can
+			// inherit its value into the three keys above (see all()).
 			'enable_catalog_sync'   => 0,
 			'catalog_sync_dir'      => 'push',
 			'order_statuses'        => array( 'pending', 'on-hold', 'processing', 'completed', 'refunded', 'cancelled', 'failed' ),
@@ -51,8 +63,23 @@ class Wafi_Connector_Settings {
 
 	public function all() {
 		if ( null === $this->cache ) {
-			$stored      = get_option( WAFI_CONNECTOR_OPTION, array() );
-			$this->cache = wp_parse_args( is_array( $stored ) ? $stored : array(), $this->defaults() );
+			$stored = get_option( WAFI_CONNECTOR_OPTION, array() );
+			$stored = is_array( $stored ) ? $stored : array();
+			$merged = wp_parse_args( $stored, $this->defaults() );
+
+			// One-time forward-migration: an install saved before catalog was
+			// split into category/brand/product inherits its single bundled
+			// switch + direction into all three granular controls, so its
+			// behaviour is unchanged after upgrade.
+			if ( array_key_exists( 'enable_catalog_sync', $stored ) && ! array_key_exists( 'enable_category_sync', $stored ) ) {
+				$legacy_on  = empty( $stored['enable_catalog_sync'] ) ? 0 : 1;
+				$legacy_dir = isset( $stored['catalog_sync_dir'] ) ? $stored['catalog_sync_dir'] : 'push';
+				foreach ( array( 'category', 'brand', 'product' ) as $e ) {
+					$merged[ "enable_{$e}_sync" ] = $legacy_on;
+					$merged[ "{$e}_sync_dir" ]    = $legacy_dir;
+				}
+			}
+			$this->cache = $merged;
 		}
 		return $this->cache;
 	}
@@ -230,9 +257,21 @@ class Wafi_Connector_Settings {
 		$clean['enable_customer_sync']  = empty( $raw['enable_customer_sync'] ) ? 0 : 1;
 		$cust_dir                       = isset( $raw['customer_sync_dir'] ) ? sanitize_key( $raw['customer_sync_dir'] ) : 'both';
 		$clean['customer_sync_dir']     = in_array( $cust_dir, array( 'push', 'pull', 'both' ), true ) ? $cust_dir : 'both';
-		$clean['enable_catalog_sync']   = empty( $raw['enable_catalog_sync'] ) ? 0 : 1;
-		$cat_dir                        = isset( $raw['catalog_sync_dir'] ) ? sanitize_key( $raw['catalog_sync_dir'] ) : 'push';
-		$clean['catalog_sync_dir']      = in_array( $cat_dir, array( 'push', 'pull', 'both' ), true ) ? $cat_dir : 'push';
+		$dir_wl = array( 'push', 'pull', 'both' );
+		$dir_of = function ( $key, $fallback ) use ( $raw, $dir_wl ) {
+			$v = isset( $raw[ $key ] ) ? sanitize_key( $raw[ $key ] ) : $fallback;
+			return in_array( $v, $dir_wl, true ) ? $v : $fallback;
+		};
+		$clean['enable_category_sync']  = empty( $raw['enable_category_sync'] ) ? 0 : 1;
+		$clean['category_sync_dir']     = $dir_of( 'category_sync_dir', 'push' );
+		$clean['enable_brand_sync']     = empty( $raw['enable_brand_sync'] ) ? 0 : 1;
+		$clean['brand_sync_dir']        = $dir_of( 'brand_sync_dir', 'push' );
+		$clean['enable_product_sync']   = empty( $raw['enable_product_sync'] ) ? 0 : 1;
+		$clean['product_sync_dir']      = $dir_of( 'product_sync_dir', 'both' );
+		// Mirror into the legacy bundled keys so any not-yet-updated reader (and
+		// the migration guard in all()) still resolves a sane value.
+		$clean['enable_catalog_sync']   = ( $clean['enable_category_sync'] || $clean['enable_brand_sync'] || $clean['enable_product_sync'] ) ? 1 : 0;
+		$clean['catalog_sync_dir']      = $clean['category_sync_dir'];
 		$clean['allow_status_writeback'] = empty( $raw['allow_status_writeback'] ) ? 0 : 1;
 		$clean['debug_log']             = empty( $raw['debug_log'] ) ? 0 : 1;
 		$clean['abandoned_idle_min']    = max( 5, absint( isset( $raw['abandoned_idle_min'] ) ? $raw['abandoned_idle_min'] : 30 ) );
@@ -493,13 +532,31 @@ class Wafi_Connector_Settings {
 								<p class="description"><?php esc_html_e( 'Matched by email/phone. Needs customers.read + customers.write.', 'wafi-connector' ); ?></p>
 							</div>
 							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_catalog_sync]" value="1" <?php checked( $s['enable_catalog_sync'] ); ?> /> <strong><?php esc_html_e( 'Catalog (categories, brands, products)', 'wafi-connector' ); ?></strong></label>
-								<select name="wafi[catalog_sync_dir]" id="wafi_cat_dir">
-									<option value="push" <?php selected( $s['catalog_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
-									<option value="both" <?php selected( $s['catalog_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'wafi-connector' ); ?></option>
-									<option value="pull" <?php selected( $s['catalog_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'wafi-connector' ); ?></option>
+								<label class="wafi-check"><input type="checkbox" name="wafi[enable_category_sync]" value="1" <?php checked( $s['enable_category_sync'] ); ?> /> <strong><?php esc_html_e( 'Categories', 'wafi-connector' ); ?></strong></label>
+								<select name="wafi[category_sync_dir]" id="wafi_category_dir">
+									<option value="push" <?php selected( $s['category_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
+									<option value="both" <?php selected( $s['category_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'wafi-connector' ); ?></option>
+									<option value="pull" <?php selected( $s['category_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'wafi-connector' ); ?></option>
 								</select>
-								<p class="description"><?php esc_html_e( 'Hierarchy + SEO. Needs products/brands/categories/collections write scopes.', 'wafi-connector' ); ?></p>
+								<p class="description"><?php esc_html_e( 'Product categories + hierarchy. Matched to the platform by handle/slug. Needs categories.read + categories.write.', 'wafi-connector' ); ?></p>
+							</div>
+							<div class="wafi-field">
+								<label class="wafi-check"><input type="checkbox" name="wafi[enable_brand_sync]" value="1" <?php checked( $s['enable_brand_sync'] ); ?> /> <strong><?php esc_html_e( 'Brands', 'wafi-connector' ); ?></strong></label>
+								<select name="wafi[brand_sync_dir]" id="wafi_brand_dir">
+									<option value="push" <?php selected( $s['brand_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
+									<option value="both" <?php selected( $s['brand_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'wafi-connector' ); ?></option>
+									<option value="pull" <?php selected( $s['brand_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'wafi-connector' ); ?></option>
+								</select>
+								<p class="description"><?php esc_html_e( 'Any brand taxonomy (native WC, Perfect Brands, YITH…). Matched by handle/slug. Needs brands.read + brands.write.', 'wafi-connector' ); ?></p>
+							</div>
+							<div class="wafi-field">
+								<label class="wafi-check"><input type="checkbox" name="wafi[enable_product_sync]" value="1" <?php checked( $s['enable_product_sync'] ); ?> /> <strong><?php esc_html_e( 'Products', 'wafi-connector' ); ?></strong></label>
+								<select name="wafi[product_sync_dir]" id="wafi_product_dir">
+									<option value="both" <?php selected( $s['product_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'wafi-connector' ); ?></option>
+									<option value="push" <?php selected( $s['product_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'wafi-connector' ); ?></option>
+									<option value="pull" <?php selected( $s['product_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'wafi-connector' ); ?></option>
+								</select>
+								<p class="description"><?php esc_html_e( 'Products + variants, mapped to existing platform products by SKU/handle. On pull, a product’s categories + brand are linked too. Needs products.read + products.write.', 'wafi-connector' ); ?></p>
 							</div>
 						</div>
 					</div>
