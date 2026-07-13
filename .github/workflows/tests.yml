@@ -1,0 +1,52 @@
+name: WP Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  phpunit:
+    name: PHPUnit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '7.4', '8.2' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System deps (svn + mysql client)
+        run: sudo apt-get update && sudo apt-get install -y subversion mysql-client
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, zip, gd
+          coverage: none
+          tools: composer
+
+      - name: Install Composer deps
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install WP test suite + WooCommerce
+        run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1:3306 latest
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
