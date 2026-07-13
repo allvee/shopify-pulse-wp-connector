@@ -44,6 +44,8 @@ class Shopify_Pulse_Plugin {
 	/** @var Shopify_Pulse_Status_Poller */
 	private $poller;
 
+	private $orders_column;
+
 	public static function instance() {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
@@ -70,6 +72,7 @@ class Shopify_Pulse_Plugin {
 		$this->product_sync   = new Shopify_Pulse_Product_Sync( $this->settings, $this->api, $this->logger );
 		$this->seo_sync       = new Shopify_Pulse_Seo_Sync( $this->settings, $this->api, $this->logger );
 		$this->poller         = new Shopify_Pulse_Status_Poller( $this->settings, $this->api, $this->logger );
+		$this->orders_column  = new Shopify_Pulse_Orders_Column( $this->settings, $this->logger );
 
 		// The settings screen (with Verify / Activate / Sync) is ALWAYS wired so
 		// the operator can re-activate a paused connection. The sync/ingest
@@ -87,6 +90,7 @@ class Shopify_Pulse_Plugin {
 			$this->product_sync->register();
 			$this->seo_sync->register();
 			$this->poller->register();
+			$this->orders_column->register();
 		}
 
 		// Self-heal cron schedules after a plugin update (activation may not run).
