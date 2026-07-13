@@ -214,12 +214,12 @@ class Wafi_Connector_Settings {
 
 	public function add_menu() {
 		add_menu_page(
-			__( 'Wafi Connector', 'wafi-connector' ),
-			__( 'Wafi Connector', 'wafi-connector' ),
+			__( 'Shopify Pulse', 'wafi-connector' ),
+			__( 'Shopify Pulse', 'wafi-connector' ),
 			self::CAPABILITY,
 			self::PAGE_SLUG,
 			array( $this, 'render_page' ),
-			'dashicons-cart',
+			WAFI_CONNECTOR_URL . 'assets/img/symbol.svg',
 			58
 		);
 	}
@@ -460,8 +460,10 @@ class Wafi_Connector_Settings {
 
 			<div class="wafi-hero">
 				<div>
-					<h1 class="wafi-hero__title"><?php esc_html_e( 'Wafi Commerce Connector', 'wafi-connector' ); ?></h1>
-					<p class="wafi-hero__sub"><?php echo esc_html( isset( $status['time'] ) && ! empty( $status['ok'] ) ? sprintf( __( 'Last verified %s', 'wafi-connector' ), $status['time'] ) : __( 'Two-way sync between WooCommerce and your Wafi store.', 'wafi-connector' ) ); ?></p>
+					<h1 class="wafi-hero__title" style="margin:0;line-height:0;">
+						<img src="<?php echo esc_url( WAFI_CONNECTOR_URL . 'assets/img/logo-horizontal.svg' ); ?>" alt="<?php esc_attr_e( 'Shopify Pulse', 'wafi-connector' ); ?>" height="40" style="height:40px;width:auto;display:block;" />
+					</h1>
+					<p class="wafi-hero__sub"><?php echo esc_html( isset( $status['time'] ) && ! empty( $status['ok'] ) ? sprintf( __( 'Last verified %s', 'wafi-connector' ), $status['time'] ) : __( 'Two-way sync between WooCommerce and your Shopify Pulse store.', 'wafi-connector' ) ); ?></p>
 				</div>
 				<div class="wafi-actions">
 					<span class="wafi-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_text ); ?></span>
@@ -503,7 +505,7 @@ class Wafi_Connector_Settings {
 			<details class="wafi-help">
 				<summary><?php esc_html_e( 'Quick setup guide', 'wafi-connector' ); ?></summary>
 				<ol style="margin:4px 0 12px 18px;line-height:1.7;">
-					<li><?php esc_html_e( 'Register an OAuth app for this store on the Wafi platform (scopes below). Copy the Client ID, Client Secret (shown once) and Store SID.', 'wafi-connector' ); ?></li>
+					<li><?php esc_html_e( 'Register an OAuth app for this store on the Shopify Pulse platform (scopes below). Copy the Client ID, Client Secret (shown once) and Store SID.', 'wafi-connector' ); ?></li>
 					<li><?php esc_html_e( 'Admin API base URL = your admin host (host only — /api/v1 is added). Storefront base = your storefront host, or blank if same.', 'wafi-connector' ); ?></li>
 					<li><?php esc_html_e( 'Paste credentials, tick Active, choose what to sync, Save, then Verify connection. Use Sync now to backfill recent orders.', 'wafi-connector' ); ?></li>
 				</ol>

@@ -1,12 +1,12 @@
 <?php
 /**
- * Plugin Name:       Wafi Commerce Connector
- * Plugin URI:        https://github.com/wafiperfume/wafi-wp-connector
- * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Wafi Commerce platform so a store can be managed from there. Connects any WooCommerce site to one Wafi store via OAuth.
+ * Plugin Name:       Shopify Pulse Connector
+ * Plugin URI:        https://github.com/allvee/wafi-wp-connector
+ * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Shopify Pulse platform so a store can be managed from there. Connects any WooCommerce site to one Shopify Pulse store via OAuth.
  * Version:           1.1.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
- * Author:            Wafi Commerce
+ * Author:            Shopify Pulse
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wafi-connector
@@ -84,7 +84,7 @@ add_action(
 				'admin_notices',
 				function () {
 					echo '<div class="notice notice-error"><p>';
-					echo esc_html__( 'Wafi Commerce Connector requires WooCommerce to be installed and active.', 'wafi-connector' );
+					echo esc_html__( 'Shopify Pulse Connector requires WooCommerce to be installed and active.', 'wafi-connector' );
 					echo '</p></div>';
 				}
 			);

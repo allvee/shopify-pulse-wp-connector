@@ -1,5 +1,5 @@
-=== Wafi Commerce Connector ===
-Contributors: waficommerce
+=== Shopify Pulse Connector ===
+Contributors: shopifypulse
 Tags: woocommerce, orders, analytics, sync, abandoned cart
 Requires at least: 5.8
 Tested up to: 6.7
@@ -10,11 +10,11 @@ Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Mirror WooCommerce orders, incomplete/abandoned carts and analytics into your Wafi Commerce store and manage them from the platform.
+Mirror WooCommerce orders, incomplete/abandoned carts and analytics into your Shopify Pulse store and manage them from the platform.
 
 == Description ==
 
-Wafi Commerce Connector links any WooCommerce store to a single Wafi Commerce
+Shopify Pulse Connector links any WooCommerce store to a single Shopify Pulse
 store using an OAuth app credential. It pushes:
 
 * **Orders** — every order (paid and unpaid/incomplete) is mirrored as a native
@@ -35,7 +35,7 @@ WooCommerce order status from the platform.
 == Installation ==
 
 1. Upload and activate the plugin (WooCommerce must be active).
-2. Open **Wafi Connector** in the admin menu.
+2. Open **Shopify Pulse** in the admin menu.
 3. Enter the Platform API base URL (host only), Store SID, OAuth Client ID and
    Client Secret. Register the OAuth app on the platform with scopes
    `orders.read` and `orders.write`.
@@ -48,9 +48,9 @@ WooCommerce order status from the platform.
 No. Order lines are pushed as free-text (title/sku/price), so no mapping is
 required and ingestion never affects platform inventory.
 
-= Can one plugin connect to multiple Wafi stores? =
+= Can one plugin connect to multiple Shopify Pulse stores? =
 
-No — one WooCommerce site connects to one Wafi store (one OAuth app = one
+No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app = one
 store). Run separate sites for separate stores.
 
 == Changelog ==

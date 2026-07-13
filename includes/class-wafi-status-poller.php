@@ -70,7 +70,7 @@ class Wafi_Connector_Status_Poller {
 				$target = $this->map_status( $o );
 				if ( $wc && $target && $wc->get_status() !== $target && $this->should_apply( $wc->get_status(), $target ) ) {
 					self::$writing_back = true;
-					$wc->update_status( $target, __( 'Updated from Wafi platform.', 'wafi-connector' ) );
+					$wc->update_status( $target, __( 'Updated from Shopify Pulse.', 'wafi-connector' ) );
 					self::$writing_back = false;
 					$this->logger->debug( 'Order ' . $ext . ' status set to ' . $target . ' from platform.' );
 				}
