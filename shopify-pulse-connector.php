@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Shopify Pulse Connector
- * Plugin URI:        https://github.com/allvee/wafi-wp-connector
+ * Plugin URI:        https://github.com/allvee/shopify-pulse-wp-connector
  * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Shopify Pulse platform so a store can be managed from there. Connects any WooCommerce site to one Shopify Pulse store via OAuth.
  * Version:           1.1.0
  * Requires at least: 5.8
