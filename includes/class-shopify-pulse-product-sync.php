@@ -72,6 +72,38 @@ class Shopify_Pulse_Product_Sync {
 		$this->push_product( (int) $product_id );
 	}
 
+	/**
+	 * Manual backfill: enqueue the most recent products for a push (the "Sync
+	 * products" button). Returns how many were queued. No-op unless product sync
+	 * is enabled with a push direction.
+	 *
+	 * @param int $limit
+	 * @return int
+	 */
+	public function backfill( $limit = 200 ) {
+		$dir = $this->settings->get( 'product_sync_dir', 'both' );
+		if ( ! $this->settings->get( 'enable_product_sync' ) || ( 'push' !== $dir && 'both' !== $dir ) ) {
+			return 0;
+		}
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return 0;
+		}
+		$ids = wc_get_products( array(
+			'limit'   => max( 1, (int) $limit ),
+			'status'  => array( 'publish', 'private' ),
+			'orderby' => 'date',
+			'order'   => 'DESC',
+			'return'  => 'ids',
+		) );
+		$n = 0;
+		foreach ( (array) $ids as $id ) {
+			$this->on_product( (int) $id );
+			$n++;
+		}
+		$this->logger->debug( 'Backfill queued ' . $n . ' products.' );
+		return $n;
+	}
+
 	public function push_product( $product_id ) {
 		if ( ! function_exists( 'wc_get_product' ) ) {
 			return;

@@ -83,6 +83,36 @@ class Shopify_Pulse_Catalog_Sync {
 		return in_array( $taxonomy, self::$brand_tax, true );
 	}
 
+	/**
+	 * Manual backfill: enqueue the store's product categories for a push (the
+	 * "Sync categories" button). Returns how many were queued. No-op unless
+	 * category sync is enabled with a push direction.
+	 *
+	 * @param int $limit
+	 * @return int
+	 */
+	public function backfill_categories( $limit = 500 ) {
+		if ( ! $this->cat_enabled() || ! $this->dir_pushes( $this->cat_dir() ) ) {
+			return 0;
+		}
+		$terms = get_terms( array(
+			'taxonomy'   => 'product_cat',
+			'hide_empty' => false,
+			'number'     => max( 1, (int) $limit ),
+			'fields'     => 'ids',
+		) );
+		if ( is_wp_error( $terms ) ) {
+			return 0;
+		}
+		$n = 0;
+		foreach ( (array) $terms as $tid ) {
+			$this->on_term( (int) $tid, 0, 'product_cat' );
+			$n++;
+		}
+		$this->logger->debug( 'Backfill queued ' . $n . ' categories.' );
+		return $n;
+	}
+
 	public function on_term( $term_id, $tt_id, $taxonomy ) {
 		if ( self::$suppress || ! $this->tax_pushes( $taxonomy ) ) {
 			return;

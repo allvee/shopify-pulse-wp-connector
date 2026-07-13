@@ -79,6 +79,35 @@ class Shopify_Pulse_Customer_Sync {
 		$this->push_user( (int) $user_id );
 	}
 
+	/**
+	 * Manual backfill: enqueue the most recent customers for a push (the "Sync
+	 * customers" button). Returns how many were queued. No-op unless customer
+	 * sync is enabled with a push direction.
+	 *
+	 * @param int $limit
+	 * @return int
+	 */
+	public function backfill( $limit = 500 ) {
+		$dir = $this->settings->get( 'customer_sync_dir', 'both' );
+		if ( ! $this->settings->get( 'enable_customer_sync' ) || ( 'push' !== $dir && 'both' !== $dir ) ) {
+			return 0;
+		}
+		$ids = get_users( array(
+			'role__in' => array( 'customer' ),
+			'number'   => max( 1, (int) $limit ),
+			'orderby'  => 'registered',
+			'order'    => 'DESC',
+			'fields'   => 'ID',
+		) );
+		$n = 0;
+		foreach ( (array) $ids as $id ) {
+			$this->on_change( (int) $id );
+			$n++;
+		}
+		$this->logger->debug( 'Backfill queued ' . $n . ' customers.' );
+		return $n;
+	}
+
 	public function push_user( $user_id ) {
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {

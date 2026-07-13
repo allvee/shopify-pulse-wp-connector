@@ -199,7 +199,7 @@ class Shopify_Pulse_Settings {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_init', array( $this, 'maybe_save' ) );
 		add_action( 'wp_ajax_shopify_pulse_test', array( $this, 'ajax_test_connection' ) );
-		add_action( 'wp_ajax_shopify_pulse_sync_now', array( $this, 'ajax_sync_now' ) );
+		add_action( 'wp_ajax_shopify_pulse_sync', array( $this, 'ajax_sync' ) );
 		add_filter(
 			'plugin_action_links_' . SHOPIFY_PULSE_BASENAME,
 			array( $this, 'action_links' )
@@ -219,9 +219,23 @@ class Shopify_Pulse_Settings {
 			self::CAPABILITY,
 			self::PAGE_SLUG,
 			array( $this, 'render_page' ),
-			SHOPIFY_PULSE_URL . 'assets/img/symbol.svg',
+			self::menu_icon(),
 			58
 		);
+	}
+
+	/**
+	 * Admin-menu icon as a base64 SVG data URI — the WordPress-recommended
+	 * pattern. A single-colour (fill) 20×20 mark that WP tints via its own CSS
+	 * (grey → white/blue on hover/current), and renders at the correct menu
+	 * size, unlike a full-colour SVG referenced by URL.
+	 */
+	private static function menu_icon() {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">'
+			. '<path d="M10 .9a9.1 9.1 0 1 0 0 18.2A9.1 9.1 0 0 0 10 .9Zm0 1.8a7.3 7.3 0 1 1 0 14.6 7.3 7.3 0 0 1 0-14.6Z"/>'
+			. '<path d="M4.4 9.2h2.3l1.1-2.7 2.1 5 1.3-3 .8 1.2h3.6v1.7h-4.5l-.9-1.4-1.5 3.4-2.1-5-.9 2.9H4.4z"/>'
+			. '</svg>';
+		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
 
 	/**
@@ -341,8 +355,12 @@ class Shopify_Pulse_Settings {
 		);
 	}
 
-	/** "Sync now" — backfill recent orders to the platform. */
-	public function ajax_sync_now() {
+	/**
+	 * Backfill one entity type to the platform (the per-entity Sync buttons).
+	 * Dispatches on the `entity` param: orders | products | customers |
+	 * categories. Each is gated on its own enable-toggle.
+	 */
+	public function ajax_sync() {
 		check_ajax_referer( self::NONCE, 'nonce' );
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'shopify-pulse-connector' ) ), 403 );
@@ -350,16 +368,42 @@ class Shopify_Pulse_Settings {
 		if ( ! $this->is_active() ) {
 			wp_send_json_error( array( 'message' => __( 'Connection is paused. Activate it first.', 'shopify-pulse-connector' ) ) );
 		}
-		if ( ! $this->get( 'enable_orders' ) ) {
-			wp_send_json_error( array( 'message' => __( 'Order sync is turned off.', 'shopify-pulse-connector' ) ) );
+
+		$entity = isset( $_POST['entity'] ) ? sanitize_key( wp_unslash( $_POST['entity'] ) ) : 'orders';
+		$plugin = Shopify_Pulse_Plugin::instance();
+
+		switch ( $entity ) {
+			case 'products':
+				if ( ! $this->get( 'enable_product_sync' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Product sync is turned off.', 'shopify-pulse-connector' ) ) );
+				}
+				$count = $plugin->product_sync()->backfill( 200 );
+				$msg   = sprintf( _n( 'Queued %d product for sync.', 'Queued %d products for sync.', $count, 'shopify-pulse-connector' ), $count );
+				break;
+			case 'customers':
+				if ( ! $this->get( 'enable_customer_sync' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Customer sync is turned off.', 'shopify-pulse-connector' ) ) );
+				}
+				$count = $plugin->customer_sync()->backfill( 500 );
+				$msg   = sprintf( _n( 'Queued %d customer for sync.', 'Queued %d customers for sync.', $count, 'shopify-pulse-connector' ), $count );
+				break;
+			case 'categories':
+				if ( ! $this->get( 'enable_category_sync' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Category sync is turned off.', 'shopify-pulse-connector' ) ) );
+				}
+				$count = $plugin->catalog_sync()->backfill_categories( 500 );
+				$msg   = sprintf( _n( 'Queued %d category for sync.', 'Queued %d categories for sync.', $count, 'shopify-pulse-connector' ), $count );
+				break;
+			case 'orders':
+			default:
+				if ( ! $this->get( 'enable_orders' ) ) {
+					wp_send_json_error( array( 'message' => __( 'Order sync is turned off.', 'shopify-pulse-connector' ) ) );
+				}
+				$count = $plugin->order_sync()->backfill( 100 );
+				$msg   = sprintf( _n( 'Queued %d order for sync.', 'Queued %d orders for sync.', $count, 'shopify-pulse-connector' ), $count );
+				break;
 		}
-		$count = Shopify_Pulse_Plugin::instance()->order_sync()->backfill( 100 );
-		wp_send_json_success(
-			array(
-				/* translators: %d: number of orders queued */
-				'message' => sprintf( _n( 'Queued %d order for sync.', 'Queued %d orders for sync.', $count, 'shopify-pulse-connector' ), $count ),
-			)
-		);
+		wp_send_json_success( array( 'message' => $msg ) );
 	}
 
 	/**
@@ -433,6 +477,9 @@ class Shopify_Pulse_Settings {
 				.sp-hero__title{margin:0;font-size:20px;line-height:1.2}
 				.sp-hero__sub{margin:4px 0 0;color:var(--muted);font-size:13px}
 				.sp-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+				.sp-sync-group{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 8px;border:1px solid var(--bd);border-radius:6px}
+				.sp-sync-label{font-size:12px;font-weight:600;color:var(--muted)}
+				.sp-sync-group .button{padding:0 8px}
 				.sp-badge{display:inline-flex;align-items:center;gap:7px;font-weight:600;padding:5px 13px;border-radius:999px;font-size:13px}
 				.sp-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
 				.sp-badge.ok{background:#edfaef;color:var(--ok)}.sp-badge.warn{background:#fcf5e6;color:var(--warn)}.sp-badge.err{background:#fcebea;color:var(--err)}
@@ -468,7 +515,13 @@ class Shopify_Pulse_Settings {
 				<div class="sp-actions">
 					<span class="sp-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_text ); ?></span>
 					<button type="button" id="sp-test-connection" class="button"><?php esc_html_e( 'Verify connection', 'shopify-pulse-connector' ); ?></button>
-					<button type="button" id="sp-sync-now" class="button button-primary"><?php esc_html_e( 'Sync now', 'shopify-pulse-connector' ); ?></button>
+					<span class="sp-sync-group">
+						<span class="sp-sync-label"><?php esc_html_e( 'Sync:', 'shopify-pulse-connector' ); ?></span>
+						<button type="button" class="button sp-sync" data-entity="orders"><?php esc_html_e( 'Orders', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button sp-sync" data-entity="products"><?php esc_html_e( 'Products', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button sp-sync" data-entity="customers"><?php esc_html_e( 'Customers', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button sp-sync" data-entity="categories"><?php esc_html_e( 'Categories', 'shopify-pulse-connector' ); ?></button>
+					</span>
 					<span id="sp-test-result" style="margin-left:4px;"></span>
 				</div>
 			</div>
@@ -507,7 +560,7 @@ class Shopify_Pulse_Settings {
 				<ol style="margin:4px 0 12px 18px;line-height:1.7;">
 					<li><?php esc_html_e( 'Register an OAuth app for this store on the Shopify Pulse platform (scopes below). Copy the Client ID, Client Secret (shown once) and Store SID.', 'shopify-pulse-connector' ); ?></li>
 					<li><?php esc_html_e( 'Admin API base URL = your admin host (host only — /api/v1 is added). Storefront base = your storefront host, or blank if same.', 'shopify-pulse-connector' ); ?></li>
-					<li><?php esc_html_e( 'Paste credentials, tick Active, choose what to sync, Save, then Verify connection. Use Sync now to backfill recent orders.', 'shopify-pulse-connector' ); ?></li>
+					<li><?php esc_html_e( 'Paste credentials, tick Active, choose what to sync, Save, then Verify connection. Use the Sync buttons to backfill orders, products, customers or categories.', 'shopify-pulse-connector' ); ?></li>
 				</ol>
 			</details>
 
@@ -688,12 +741,13 @@ class Shopify_Pulse_Settings {
 		( function () {
 			var out   = document.getElementById( 'sp-test-result' );
 			var nonce = <?php echo wp_json_encode( wp_create_nonce( self::NONCE ) ); ?>;
-			function call( action, pending ) {
+			function call( action, pending, entity ) {
 				out.textContent = pending;
 				out.style.color = '#555';
 				var data = new FormData();
 				data.append( 'action', action );
 				data.append( 'nonce', nonce );
+				if ( entity ) { data.append( 'entity', entity ); }
 				fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: data } )
 					.then( function ( r ) { return r.json(); } )
 					.then( function ( j ) {
@@ -704,8 +758,12 @@ class Shopify_Pulse_Settings {
 			}
 			var t = document.getElementById( 'sp-test-connection' );
 			if ( t ) { t.addEventListener( 'click', function () { call( 'shopify_pulse_test', <?php echo wp_json_encode( __( 'Verifying…', 'shopify-pulse-connector' ) ); ?> ); } ); }
-			var s = document.getElementById( 'sp-sync-now' );
-			if ( s ) { s.addEventListener( 'click', function () { call( 'shopify_pulse_sync_now', <?php echo wp_json_encode( __( 'Queueing…', 'shopify-pulse-connector' ) ); ?> ); } ); }
+			var pending = <?php echo wp_json_encode( __( 'Queueing…', 'shopify-pulse-connector' ) ); ?>;
+			Array.prototype.forEach.call( document.querySelectorAll( '.sp-sync' ), function ( b ) {
+				b.addEventListener( 'click', function () {
+					call( 'shopify_pulse_sync', pending, b.getAttribute( 'data-entity' ) );
+				} );
+			} );
 		} )();
 		</script>
 		<?php
