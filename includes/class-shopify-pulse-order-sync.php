@@ -115,6 +115,41 @@ class Shopify_Pulse_Order_Sync {
 	 * Build + send the order. Skips when the payload is byte-identical to the
 	 * last successful push (status polls / meta saves won't re-send).
 	 */
+	/**
+	 * Force-sync ONE order to the platform now (the per-order Sync button in the
+	 * orders list). Unlike push_order() this ignores the enable_orders toggle and
+	 * the unchanged-hash skip — the operator explicitly asked for this order —
+	 * and returns a result the caller can render. Stamps the sync meta on
+	 * success so the column flips to "Synced".
+	 *
+	 * @param int $order_id
+	 * @return array{ok:bool,id?:string,message:string}
+	 */
+	public function sync_one( $order_id ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return array( 'ok' => false, 'message' => __( 'Order not found.', 'shopify-pulse-connector' ) );
+		}
+		$payload = Shopify_Pulse_Order_Mapper::map( $order, false );
+		$res     = $this->api->post( '/connect/orders', $payload );
+		if ( is_wp_error( $res ) ) {
+			$this->logger->error( 'Order ' . $order_id . ' manual sync failed: ' . $res->get_error_message() );
+			return array( 'ok' => false, 'message' => $res->get_error_message() );
+		}
+		$order->update_meta_data( SHOPIFY_PULSE_META_HASH, md5( (string) wp_json_encode( $payload ) ) );
+		if ( ! empty( $res['id'] ) ) {
+			$order->update_meta_data( SHOPIFY_PULSE_META_ID, (string) $res['id'] );
+		}
+		$order->update_meta_data( SHOPIFY_PULSE_META_SYNCED_AT, current_time( 'mysql' ) );
+		$order->delete_meta_data( SHOPIFY_PULSE_META_ATTEMPTS );
+		$order->save();
+		return array(
+			'ok'      => true,
+			'id'      => isset( $res['id'] ) ? (string) $res['id'] : '',
+			'message' => __( 'Synced.', 'shopify-pulse-connector' ),
+		);
+	}
+
 	public function push_order( $order_id, $is_backfill = false ) {
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
