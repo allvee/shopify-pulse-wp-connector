@@ -13,7 +13,7 @@
  * Fails OPEN: if the API is unreachable the checkout proceeds, so a platform
  * outage never blocks legitimate sales.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Fraud {
 
-	const SESSION_KEY = 'wafi_fraud_verdict';
+	const SESSION_KEY = 'sp_fraud_verdict';
 
 	/** @var Shopify_Pulse_Settings */
 	private $settings;
@@ -78,7 +78,7 @@ class Shopify_Pulse_Fraud {
 		// and runs even when the full fraud screen is disabled.
 		$courier_msg = $this->courier_block_message( $phone );
 		if ( $courier_msg ) {
-			$errors->add( 'wafi_courier', $courier_msg );
+			$errors->add( 'sp_courier', $courier_msg );
 			return;
 		}
 		if ( ! $this->settings->get( 'enable_fraud' ) ) {
@@ -92,7 +92,7 @@ class Shopify_Pulse_Fraud {
 
 		$action = $this->settings->get( 'fraud_action' );
 		if ( 'block' === $action ) {
-			$errors->add( 'wafi_fraud', $this->message( $verdict ) );
+			$errors->add( 'sp_fraud', $this->message( $verdict ) );
 			return;
 		}
 		// hold / flag: let the order be created, then act on it.
@@ -116,7 +116,7 @@ class Shopify_Pulse_Fraud {
 		$courier_msg = $this->courier_block_message( $order->get_billing_phone() );
 		if ( $courier_msg ) {
 			if ( class_exists( '\Automattic\WooCommerce\StoreApi\Exceptions\RouteException' ) ) {
-				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 'wafi_courier_blocked', $courier_msg, 400 );
+				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 'sp_courier_blocked', $courier_msg, 400 );
 			}
 			$order->update_status( 'failed', $courier_msg );
 			return;
@@ -134,7 +134,7 @@ class Shopify_Pulse_Fraud {
 		if ( 'block' === $action ) {
 			if ( class_exists( '\Automattic\WooCommerce\StoreApi\Exceptions\RouteException' ) ) {
 				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
-					'wafi_fraud_blocked',
+					'sp_fraud_blocked',
 					$this->message( $verdict ),
 					400
 				);
@@ -200,13 +200,13 @@ class Shopify_Pulse_Fraud {
 		$layer  = isset( $verdict['layer'] ) ? $verdict['layer'] : 'unknown';
 		$reason = isset( $verdict['reason'] ) ? $verdict['reason'] : '';
 
-		$order->update_meta_data( '_wafi_fraud_flagged', '1' );
-		$order->update_meta_data( '_wafi_fraud_layer', $layer );
-		$order->update_meta_data( '_wafi_fraud_reason', $reason );
+		$order->update_meta_data( '_sp_fraud_flagged', '1' );
+		$order->update_meta_data( '_sp_fraud_layer', $layer );
+		$order->update_meta_data( '_sp_fraud_reason', $reason );
 
 		$note = sprintf(
 			/* translators: 1: fraud layer, 2: reason */
-			__( 'Wafi fraud screen: flagged by layer "%1$s" (%2$s).', 'shopify-pulse-connector' ),
+			__( 'Shopify Pulse fraud screen: flagged by layer "%1$s" (%2$s).', 'shopify-pulse-connector' ),
 			$layer,
 			$reason
 		);

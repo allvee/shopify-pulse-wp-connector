@@ -1,17 +1,17 @@
 /**
- * Wafi Connector — browser analytics. Fires PageView / ViewContent /
+ * Shopify Pulse Connector — browser analytics. Fires PageView / ViewContent /
  * InitiateCheckout / AddToCart through the same-site AJAX proxy
- * (admin-ajax.php?action=wafi_track), which forwards to the platform's public
+ * (admin-ajax.php?action=sp_track), which forwards to the platform's public
  * /pixel/events. Purchase is handled server-side, never here.
  */
 ( function () {
 	'use strict';
 
-	if ( typeof window.wafiPixel === 'undefined' || ! window.wafiPixel.ajaxUrl ) {
+	if ( typeof window.spPixel === 'undefined' || ! window.spPixel.ajaxUrl ) {
 		return;
 	}
 
-	var cfg = window.wafiPixel;
+	var cfg = window.spPixel;
 
 	function uid( name ) {
 		return name + '-' + Date.now() + '-' + Math.floor( Math.random() * 1e6 );
@@ -19,7 +19,7 @@
 
 	function send( eventName, custom ) {
 		var data = new FormData();
-		data.append( 'action', 'wafi_track' );
+		data.append( 'action', 'sp_track' );
 		data.append( 'nonce', cfg.nonce );
 		data.append( 'eventName', eventName );
 		data.append( 'eventId', uid( eventName ) );

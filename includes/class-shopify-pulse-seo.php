@@ -4,7 +4,7 @@
  * across the common WordPress SEO plugins (Yoast, Rank Math, All in One SEO),
  * so catalog sync can carry `seoTitle` / `seoDescription` in both directions.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

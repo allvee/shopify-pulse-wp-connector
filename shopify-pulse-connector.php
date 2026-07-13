@@ -3,7 +3,7 @@
  * Plugin Name:       Shopify Pulse Connector
  * Plugin URI:        https://github.com/allvee/shopify-pulse-wp-connector
  * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Shopify Pulse platform so a store can be managed from there. Connects any WooCommerce site to one Shopify Pulse store via OAuth.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Shopify Pulse
@@ -13,14 +13,14 @@
  * WC requires at least: 6.0
  * WC tested up to:   9.9
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'SHOPIFY_PULSE_VERSION', '1.1.0' );
+define( 'SHOPIFY_PULSE_VERSION', '1.2.0' );
 define( 'SHOPIFY_PULSE_FILE', __FILE__ );
 define( 'SHOPIFY_PULSE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SHOPIFY_PULSE_URL', plugin_dir_url( __FILE__ ) );
@@ -41,11 +41,11 @@ define( 'SHOPIFY_PULSE_PRODUCT_SYNC_ACTION', 'shopify_pulse_sync_product' );
 define( 'SHOPIFY_PULSE_CATALOG_PULL_CRON', 'shopify_pulse_catalog_pull' );
 
 // Order meta keys.
-define( 'SHOPIFY_PULSE_META_ID', '_wafi_order_id' );
-define( 'SHOPIFY_PULSE_META_HASH', '_wafi_sync_hash' );
-define( 'SHOPIFY_PULSE_META_SYNCED_AT', '_wafi_synced_at' );
-define( 'SHOPIFY_PULSE_META_ATTEMPTS', '_wafi_sync_attempts' );
-define( 'SHOPIFY_PULSE_META_PIXEL_SENT', '_wafi_purchase_pixel_sent' );
+define( 'SHOPIFY_PULSE_META_ID', '_sp_order_id' );
+define( 'SHOPIFY_PULSE_META_HASH', '_sp_sync_hash' );
+define( 'SHOPIFY_PULSE_META_SYNCED_AT', '_sp_synced_at' );
+define( 'SHOPIFY_PULSE_META_ATTEMPTS', '_sp_sync_attempts' );
+define( 'SHOPIFY_PULSE_META_PIXEL_SENT', '_sp_purchase_pixel_sent' );
 
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-logger.php';
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-settings.php';

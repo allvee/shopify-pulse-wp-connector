@@ -4,7 +4,7 @@
  * from the platform (the operator manages fulfillment/cancellation there).
  * Off by default — enabled via "allow_status_writeback".
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

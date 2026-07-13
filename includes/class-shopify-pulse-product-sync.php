@@ -7,7 +7,7 @@
  * /connect/products, async and hash-gated. Stock is intentionally not sent
  * (WooCommerce stays the stock source).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,8 +16,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Product_Sync {
 
-	const HASH_META     = '_wafi_prod_hash';
-	const PLATFORM_META = '_wafi_platform_id';
+	const HASH_META     = '_sp_prod_hash';
+	const PLATFORM_META = '_sp_platform_id';
 
 	private static $brand_tax = array( 'product_brand', 'pwb-brand', 'pa_brand', 'yith_product_brand' );
 
@@ -261,7 +261,7 @@ class Shopify_Pulse_Product_Sync {
 		if ( ( 'pull' !== $dir && 'both' !== $dir ) || ! function_exists( 'wc_get_product' ) ) {
 			return;
 		}
-		$cursor = get_option( 'wafi_prod_pull_cursor', '' );
+		$cursor = get_option( 'sp_prod_pull_cursor', '' );
 		$res    = $this->api->get( '/connect/products?limit=50' . ( $cursor ? '&updatedSince=' . rawurlencode( $cursor ) : '' ) );
 		if ( is_wp_error( $res ) ) {
 			$this->logger->error( 'Product pull failed: ' . $res->get_error_message() );
@@ -276,7 +276,7 @@ class Shopify_Pulse_Product_Sync {
 			}
 		}
 		if ( $max && $max !== $cursor ) {
-			update_option( 'wafi_prod_pull_cursor', $max, false );
+			update_option( 'sp_prod_pull_cursor', $max, false );
 		}
 	}
 
@@ -312,7 +312,7 @@ class Shopify_Pulse_Product_Sync {
 
 		// Last-write-wins.
 		if ( $wc_id ) {
-			$last = get_post_meta( $wc_id, '_wafi_prod_platform_updated', true );
+			$last = get_post_meta( $wc_id, '_sp_prod_platform_updated', true );
 			if ( $last && $platform_updated && $platform_updated <= $last ) {
 				return;
 			}
@@ -394,7 +394,7 @@ class Shopify_Pulse_Product_Sync {
 		);
 		$this->apply_taxonomy( $wc_id, $p );
 		update_post_meta( $wc_id, self::PLATFORM_META, $platform_id );
-		update_post_meta( $wc_id, '_wafi_prod_platform_updated', $platform_updated );
+		update_post_meta( $wc_id, '_sp_prod_platform_updated', $platform_updated );
 	}
 
 	/**

@@ -4,7 +4,7 @@
  * /connect/orders. Idempotent (payload hash skip + platform-side dedupe on
  * externalId) with exponential backoff retry.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

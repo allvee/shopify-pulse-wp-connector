@@ -1,6 +1,6 @@
 <?php
 /**
- * HTTP client for the Wafi platform. Owns the OAuth client_credentials token
+ * HTTP client for the Shopify Pulse platform. Owns the OAuth client_credentials token
  * lifecycle (mint, cache, refresh, single retry on 401) and attaches the
  * required X-Store-Sid tenant header to every call.
  *
@@ -10,7 +10,7 @@
  *   - Every request carries `Authorization: Bearer wat_…` + `X-Store-Sid`.
  *   - The public pixel endpoint needs only `X-Store-Sid` (public_post()).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -61,7 +61,7 @@ class Shopify_Pulse_Api_Client {
 			}
 		}
 		if ( ! $this->settings->is_configured() ) {
-			return new WP_Error( 'wafi_not_configured', __( 'Connector is not configured (API base, SID, client id/secret required).', 'shopify-pulse-connector' ) );
+			return new WP_Error( 'sp_not_configured', __( 'Connector is not configured (API base, SID, client id/secret required).', 'shopify-pulse-connector' ) );
 		}
 
 		$response = wp_remote_post(
@@ -93,7 +93,7 @@ class Shopify_Pulse_Api_Client {
 		if ( $code < 200 || $code >= 300 || empty( $body['access_token'] ) ) {
 			$msg = isset( $body['message'] ) ? ( is_array( $body['message'] ) ? implode( '; ', $body['message'] ) : $body['message'] ) : 'HTTP ' . $code;
 			$this->logger->error( 'Token mint rejected: ' . $msg );
-			return new WP_Error( 'wafi_token_failed', $msg );
+			return new WP_Error( 'sp_token_failed', $msg );
 		}
 
 		$token   = (string) $body['access_token'];
@@ -118,7 +118,7 @@ class Shopify_Pulse_Api_Client {
 	 */
 	private function send( $base, $method, $path, $body, $auth, $retry = true ) {
 		if ( '' === $this->settings->get_sid() ) {
-			return new WP_Error( 'wafi_not_configured', __( 'Missing Store SID.', 'shopify-pulse-connector' ) );
+			return new WP_Error( 'sp_not_configured', __( 'Missing Store SID.', 'shopify-pulse-connector' ) );
 		}
 		$headers = array(
 			'Content-Type' => 'application/json',
@@ -162,7 +162,7 @@ class Shopify_Pulse_Api_Client {
 				? ( is_array( $decoded['message'] ) ? implode( '; ', $decoded['message'] ) : $decoded['message'] )
 				: 'HTTP ' . $code;
 			$this->logger->error( $method . ' ' . $path . ' -> ' . $msg );
-			return new WP_Error( 'wafi_http_' . $code, $msg, array( 'status' => $code, 'body' => $decoded ) );
+			return new WP_Error( 'sp_http_' . $code, $msg, array( 'status' => $code, 'body' => $decoded ) );
 		}
 		return is_array( $decoded ) ? $decoded : array();
 	}

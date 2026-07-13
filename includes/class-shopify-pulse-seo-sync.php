@@ -8,7 +8,7 @@
  * filter. The platform is the source of truth for SEO redirects; the plugin is
  * the enforcement point on WordPress (no third-party redirect plugin needed).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,9 +17,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Seo_Sync {
 
-	const REDIRECTS_OPTION = 'wafi_redirects';
-	const ROBOTS_OPTION    = 'wafi_robots_disallow';
-	const CURSOR_OPTION    = 'wafi_redirect_cursor';
+	const REDIRECTS_OPTION = 'sp_redirects';
+	const ROBOTS_OPTION    = 'sp_robots_disallow';
+	const CURSOR_OPTION    = 'sp_redirect_cursor';
 
 	/** @var Shopify_Pulse_Settings */
 	private $settings;
@@ -138,7 +138,7 @@ class Shopify_Pulse_Seo_Sync {
 
 	// ── Push (WooCommerce → platform) ───────────────────────────────────────
 
-	const PUSH_HASHES_OPTION = 'wafi_redirect_push_hashes';
+	const PUSH_HASHES_OPTION = 'sp_redirect_push_hashes';
 
 	/**
 	 * Cron: read WordPress-authored redirects from whichever SEO/redirect plugin

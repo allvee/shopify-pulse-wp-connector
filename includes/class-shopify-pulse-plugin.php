@@ -3,7 +3,7 @@
  * Orchestrator: wires the components and registers their hooks. One singleton,
  * constructed on `plugins_loaded` once WooCommerce is present.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

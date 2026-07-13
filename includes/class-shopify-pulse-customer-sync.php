@@ -11,7 +11,7 @@
  *
  * Direction is operator-controlled (push / pull / both).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -21,9 +21,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Shopify_Pulse_Customer_Sync {
 
 	const CURSOR_OPTION        = 'shopify_pulse_customer_cursor';
-	const META_PLATFORM_ID     = '_wafi_platform_customer_id';
-	const META_HASH            = '_wafi_cust_hash';
-	const META_PLATFORM_UPDATED = '_wafi_cust_platform_updated';
+	const META_PLATFORM_ID     = '_sp_platform_customer_id';
+	const META_HASH            = '_sp_cust_hash';
+	const META_PLATFORM_UPDATED = '_sp_cust_platform_updated';
 
 	/** True while applying a platform change, so the WP user hooks don't echo it back. */
 	private static $suppress = false;
@@ -98,7 +98,7 @@ class Shopify_Pulse_Customer_Sync {
 		if ( ! empty( $res['id'] ) ) {
 			update_user_meta( $user_id, self::META_PLATFORM_ID, (int) $res['id'] );
 		}
-		update_user_meta( $user_id, '_wafi_cust_synced_at', current_time( 'mysql' ) );
+		update_user_meta( $user_id, '_sp_cust_synced_at', current_time( 'mysql' ) );
 		$this->logger->debug( 'Customer ' . $user_id . ' pushed (platform id ' . ( isset( $res['id'] ) ? $res['id'] : '?' ) . ').' );
 	}
 

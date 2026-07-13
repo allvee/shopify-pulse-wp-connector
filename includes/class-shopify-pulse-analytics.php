@@ -9,7 +9,7 @@
  *    browser through a same-site AJAX proxy (avoids cross-origin issues; lets
  *    the server derive the real client IP/UA).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Analytics {
 
-	const NONCE = 'wafi_pixel';
+	const NONCE = 'sp_pixel';
 
 	const ALLOWED = array(
 		'PageView', 'ViewContent', 'Search', 'AddToCart', 'AddToWishlist',
@@ -47,8 +47,8 @@ class Shopify_Pulse_Analytics {
 		add_action( 'woocommerce_order_status_completed', array( $this, 'track_purchase' ), 20, 1 );
 		add_action( 'user_register', array( $this, 'track_registration' ), 20, 1 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
-		add_action( 'wp_ajax_wafi_track', array( $this, 'ajax_track' ) );
-		add_action( 'wp_ajax_nopriv_wafi_track', array( $this, 'ajax_track' ) );
+		add_action( 'wp_ajax_sp_track', array( $this, 'ajax_track' ) );
+		add_action( 'wp_ajax_nopriv_sp_track', array( $this, 'ajax_track' ) );
 	}
 
 	/** Server-side Purchase — deduped by the platform on order_id. */
@@ -129,8 +129,8 @@ class Shopify_Pulse_Analytics {
 			return;
 		}
 		wp_register_script(
-			'wafi-pixel',
-			SHOPIFY_PULSE_URL . 'assets/js/wafi-pixel.js',
+			'sp-pixel',
+			SHOPIFY_PULSE_URL . 'assets/js/sp-pixel.js',
 			array(),
 			SHOPIFY_PULSE_VERSION,
 			true
@@ -153,15 +153,15 @@ class Shopify_Pulse_Analytics {
 		}
 
 		wp_localize_script(
-			'wafi-pixel',
-			'wafiPixel',
+			'sp-pixel',
+			'spPixel',
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( self::NONCE ),
 				'page'    => $page,
 			)
 		);
-		wp_enqueue_script( 'wafi-pixel' );
+		wp_enqueue_script( 'sp-pixel' );
 	}
 
 	private function page_type() {
@@ -229,7 +229,7 @@ class Shopify_Pulse_Analytics {
 	/** Crude per-IP throttle for the public pixel proxy (120 events/min). */
 	private function rate_limited() {
 		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? preg_replace( '/[^0-9a-fA-F:.]/', '', wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '0';
-		$key = 'wafi_px_rl_' . md5( $ip );
+		$key = 'sp_px_rl_' . md5( $ip );
 		$n   = (int) get_transient( $key );
 		if ( $n >= 120 ) {
 			return true;

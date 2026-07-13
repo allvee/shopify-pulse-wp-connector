@@ -2,10 +2,10 @@
 /**
  * Settings store + admin screen for the connector.
  *
- * One WooCommerce site connects to exactly one Wafi store (an OAuth app is
+ * One WooCommerce site connects to exactly one Shopify Pulse store (an OAuth app is
  * bound to one sid). Credentials are entered once by the operator.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -179,11 +179,11 @@ class Shopify_Pulse_Settings {
 
 		$stats['products'] = (int) $wpdb->get_var( $wpdb->prepare( // phpcs:ignore WordPress.DB
 			"SELECT COUNT(1) FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = %s AND p.post_type = 'product'",
-			'_wafi_platform_id'
+			'_sp_platform_id'
 		) );
 		$stats['customers'] = (int) $wpdb->get_var( $wpdb->prepare( // phpcs:ignore WordPress.DB
 			"SELECT COUNT(1) FROM {$wpdb->usermeta} WHERE meta_key = %s",
-			'_wafi_platform_customer_id'
+			'_sp_platform_customer_id'
 		) );
 
 		set_transient( 'shopify_pulse_dashboard_stats', $stats, 5 * MINUTE_IN_SECONDS );
@@ -238,7 +238,7 @@ class Shopify_Pulse_Settings {
 		check_admin_referer( self::NONCE );
 
 		$existing = $this->all();
-		$raw      = isset( $_POST['wafi'] ) && is_array( $_POST['wafi'] ) ? wp_unslash( $_POST['wafi'] ) : array();
+		$raw      = isset( $_POST['sp'] ) && is_array( $_POST['sp'] ) ? wp_unslash( $_POST['sp'] ) : array();
 
 		$clean                          = array();
 		$clean['active']                = empty( $raw['active'] ) ? 0 : 1;
@@ -302,7 +302,7 @@ class Shopify_Pulse_Settings {
 		// Reset the cached token whenever credentials might have changed.
 		delete_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT );
 
-		add_settings_error( 'wafi_connector', 'saved', __( 'Settings saved.', 'shopify-pulse-connector' ), 'updated' );
+		add_settings_error( 'sp_connector', 'saved', __( 'Settings saved.', 'shopify-pulse-connector' ), 'updated' );
 	}
 
 	public function ajax_test_connection() {
@@ -408,7 +408,7 @@ class Shopify_Pulse_Settings {
 		$s          = $this->all();
 		$wc_statuses = function_exists( 'wc_get_order_statuses' ) ? wc_get_order_statuses() : array();
 		list( $ship_methods, $ship_rates ) = $this->shipping_map_data();
-		settings_errors( 'wafi_connector' );
+		settings_errors( 'sp_connector' );
 		?>
 		<?php
 		$status = $this->status();
@@ -425,84 +425,84 @@ class Shopify_Pulse_Settings {
 			$badge_text  = __( 'Not verified', 'shopify-pulse-connector' );
 		}
 		?>
-		<div class="wrap wafi">
+		<div class="wrap sp">
 			<style>
-				.wafi{--pri:#2271b1;--ok:#00844a;--warn:#996800;--err:#b32d2e;--bd:#dcdcde;--muted:#646970}
-				.wafi h1.wp-heading-inline{margin:0}
-				.wafi-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:#fff;border:1px solid var(--bd);border-radius:8px;padding:16px 20px;margin:16px 0}
-				.wafi-hero__title{margin:0;font-size:20px;line-height:1.2}
-				.wafi-hero__sub{margin:4px 0 0;color:var(--muted);font-size:13px}
-				.wafi-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-				.wafi-badge{display:inline-flex;align-items:center;gap:7px;font-weight:600;padding:5px 13px;border-radius:999px;font-size:13px}
-				.wafi-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
-				.wafi-badge.ok{background:#edfaef;color:var(--ok)}.wafi-badge.warn{background:#fcf5e6;color:var(--warn)}.wafi-badge.err{background:#fcebea;color:var(--err)}
-				.wafi-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:14px;margin:0 0 22px}
-				.wafi-kpi{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--pri);border-radius:8px;padding:14px 16px}
-				.wafi-kpi.warn{border-left-color:var(--warn)}.wafi-kpi.err{border-left-color:var(--err)}
-				.wafi-kpi__label{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
-				.wafi-kpi__label .dashicons{font-size:15px;width:15px;height:15px;color:var(--pri)}
-				.wafi-kpi__num{font-size:26px;font-weight:700;line-height:1.15;margin-top:7px;font-variant-numeric:tabular-nums;color:#1d2327}
-				.wafi-kpi__sub{font-size:12px;color:var(--muted);margin-top:2px}
-				.wafi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
-				.wafi-card{background:#fff;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
-				.wafi-card__head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--bd);font-weight:600;font-size:14px}
-				.wafi-card__head .dashicons{color:var(--pri)}
-				.wafi-card__body{padding:16px}
-				.wafi-field{margin:0 0 16px}.wafi-field:last-child{margin-bottom:0}
-				.wafi-field>label.h{display:block;font-weight:600;margin-bottom:5px}
-				.wafi-field .description{margin:5px 0 0}
-				.wafi-field input[type=url],.wafi-field input[type=text],.wafi-field input[type=password],.wafi-field select{width:100%;max-width:100%}
-				.wafi-check{display:block;margin:0 0 8px}.wafi-check:last-child{margin-bottom:0}
-				.wafi-help{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:6px 16px;margin:0 0 16px}
-				.wafi-help summary{cursor:pointer;font-weight:600;padding:8px 0}
-				@media(max-width:782px){.wafi-hero{flex-direction:column;align-items:flex-start}}
+				.sp{--pri:#2271b1;--ok:#00844a;--warn:#996800;--err:#b32d2e;--bd:#dcdcde;--muted:#646970}
+				.sp h1.wp-heading-inline{margin:0}
+				.sp-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:#fff;border:1px solid var(--bd);border-radius:8px;padding:16px 20px;margin:16px 0}
+				.sp-hero__title{margin:0;font-size:20px;line-height:1.2}
+				.sp-hero__sub{margin:4px 0 0;color:var(--muted);font-size:13px}
+				.sp-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+				.sp-badge{display:inline-flex;align-items:center;gap:7px;font-weight:600;padding:5px 13px;border-radius:999px;font-size:13px}
+				.sp-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+				.sp-badge.ok{background:#edfaef;color:var(--ok)}.sp-badge.warn{background:#fcf5e6;color:var(--warn)}.sp-badge.err{background:#fcebea;color:var(--err)}
+				.sp-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:14px;margin:0 0 22px}
+				.sp-kpi{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--pri);border-radius:8px;padding:14px 16px}
+				.sp-kpi.warn{border-left-color:var(--warn)}.sp-kpi.err{border-left-color:var(--err)}
+				.sp-kpi__label{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+				.sp-kpi__label .dashicons{font-size:15px;width:15px;height:15px;color:var(--pri)}
+				.sp-kpi__num{font-size:26px;font-weight:700;line-height:1.15;margin-top:7px;font-variant-numeric:tabular-nums;color:#1d2327}
+				.sp-kpi__sub{font-size:12px;color:var(--muted);margin-top:2px}
+				.sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+				.sp-card{background:#fff;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+				.sp-card__head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--bd);font-weight:600;font-size:14px}
+				.sp-card__head .dashicons{color:var(--pri)}
+				.sp-card__body{padding:16px}
+				.sp-field{margin:0 0 16px}.sp-field:last-child{margin-bottom:0}
+				.sp-field>label.h{display:block;font-weight:600;margin-bottom:5px}
+				.sp-field .description{margin:5px 0 0}
+				.sp-field input[type=url],.sp-field input[type=text],.sp-field input[type=password],.sp-field select{width:100%;max-width:100%}
+				.sp-check{display:block;margin:0 0 8px}.sp-check:last-child{margin-bottom:0}
+				.sp-help{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:6px 16px;margin:0 0 16px}
+				.sp-help summary{cursor:pointer;font-weight:600;padding:8px 0}
+				@media(max-width:782px){.sp-hero{flex-direction:column;align-items:flex-start}}
 			</style>
 
-			<div class="wafi-hero">
+			<div class="sp-hero">
 				<div>
-					<h1 class="wafi-hero__title" style="margin:0;line-height:0;">
+					<h1 class="sp-hero__title" style="margin:0;line-height:0;">
 						<img src="<?php echo esc_url( SHOPIFY_PULSE_URL . 'assets/img/logo-horizontal.svg' ); ?>" alt="<?php esc_attr_e( 'Shopify Pulse', 'shopify-pulse-connector' ); ?>" height="40" style="height:40px;width:auto;display:block;" />
 					</h1>
-					<p class="wafi-hero__sub"><?php echo esc_html( isset( $status['time'] ) && ! empty( $status['ok'] ) ? sprintf( __( 'Last verified %s', 'shopify-pulse-connector' ), $status['time'] ) : __( 'Two-way sync between WooCommerce and your Shopify Pulse store.', 'shopify-pulse-connector' ) ); ?></p>
+					<p class="sp-hero__sub"><?php echo esc_html( isset( $status['time'] ) && ! empty( $status['ok'] ) ? sprintf( __( 'Last verified %s', 'shopify-pulse-connector' ), $status['time'] ) : __( 'Two-way sync between WooCommerce and your Shopify Pulse store.', 'shopify-pulse-connector' ) ); ?></p>
 				</div>
-				<div class="wafi-actions">
-					<span class="wafi-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_text ); ?></span>
-					<button type="button" id="wafi-test-connection" class="button"><?php esc_html_e( 'Verify connection', 'shopify-pulse-connector' ); ?></button>
-					<button type="button" id="wafi-sync-now" class="button button-primary"><?php esc_html_e( 'Sync now', 'shopify-pulse-connector' ); ?></button>
-					<span id="wafi-test-result" style="margin-left:4px;"></span>
-				</div>
-			</div>
-
-			<div class="wafi-kpis">
-				<div class="wafi-kpi">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-cart"></span><?php esc_html_e( 'Orders synced', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( number_format_i18n( $k['orders_synced'] ) ); ?></div>
-				</div>
-				<div class="wafi-kpi <?php echo $k['queue'] > 0 ? 'warn' : ''; ?>">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-update"></span><?php esc_html_e( 'In queue', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( $this->kpi_num( $k['queue'] ) ); ?></div>
-					<div class="wafi-kpi__sub"><?php esc_html_e( 'awaiting push', 'shopify-pulse-connector' ); ?></div>
-				</div>
-				<div class="wafi-kpi <?php echo $k['failed'] > 0 ? 'err' : ''; ?>">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-warning"></span><?php esc_html_e( 'Failed', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( $this->kpi_num( $k['failed'] ) ); ?></div>
-					<div class="wafi-kpi__sub"><?php esc_html_e( 'retrying w/ backoff', 'shopify-pulse-connector' ); ?></div>
-				</div>
-				<div class="wafi-kpi">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-archive"></span><?php esc_html_e( 'Abandoned pushed', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( number_format_i18n( $k['abandoned'] ) ); ?></div>
-				</div>
-				<div class="wafi-kpi">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-products"></span><?php esc_html_e( 'Products synced', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( number_format_i18n( $k['products'] ) ); ?></div>
-				</div>
-				<div class="wafi-kpi">
-					<div class="wafi-kpi__label"><span class="dashicons dashicons-groups"></span><?php esc_html_e( 'Customers synced', 'shopify-pulse-connector' ); ?></div>
-					<div class="wafi-kpi__num"><?php echo esc_html( number_format_i18n( $k['customers'] ) ); ?></div>
+				<div class="sp-actions">
+					<span class="sp-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $badge_text ); ?></span>
+					<button type="button" id="sp-test-connection" class="button"><?php esc_html_e( 'Verify connection', 'shopify-pulse-connector' ); ?></button>
+					<button type="button" id="sp-sync-now" class="button button-primary"><?php esc_html_e( 'Sync now', 'shopify-pulse-connector' ); ?></button>
+					<span id="sp-test-result" style="margin-left:4px;"></span>
 				</div>
 			</div>
 
-			<details class="wafi-help">
+			<div class="sp-kpis">
+				<div class="sp-kpi">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-cart"></span><?php esc_html_e( 'Orders synced', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['orders_synced'] ) ); ?></div>
+				</div>
+				<div class="sp-kpi <?php echo $k['queue'] > 0 ? 'warn' : ''; ?>">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-update"></span><?php esc_html_e( 'In queue', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( $this->kpi_num( $k['queue'] ) ); ?></div>
+					<div class="sp-kpi__sub"><?php esc_html_e( 'awaiting push', 'shopify-pulse-connector' ); ?></div>
+				</div>
+				<div class="sp-kpi <?php echo $k['failed'] > 0 ? 'err' : ''; ?>">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-warning"></span><?php esc_html_e( 'Failed', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( $this->kpi_num( $k['failed'] ) ); ?></div>
+					<div class="sp-kpi__sub"><?php esc_html_e( 'retrying w/ backoff', 'shopify-pulse-connector' ); ?></div>
+				</div>
+				<div class="sp-kpi">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-archive"></span><?php esc_html_e( 'Abandoned pushed', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['abandoned'] ) ); ?></div>
+				</div>
+				<div class="sp-kpi">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-products"></span><?php esc_html_e( 'Products synced', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['products'] ) ); ?></div>
+				</div>
+				<div class="sp-kpi">
+					<div class="sp-kpi__label"><span class="dashicons dashicons-groups"></span><?php esc_html_e( 'Customers synced', 'shopify-pulse-connector' ); ?></div>
+					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['customers'] ) ); ?></div>
+				</div>
+			</div>
+
+			<details class="sp-help">
 				<summary><?php esc_html_e( 'Quick setup guide', 'shopify-pulse-connector' ); ?></summary>
 				<ol style="margin:4px 0 12px 18px;line-height:1.7;">
 					<li><?php esc_html_e( 'Register an OAuth app for this store on the Shopify Pulse platform (scopes below). Copy the Client ID, Client Secret (shown once) and Store SID.', 'shopify-pulse-connector' ); ?></li>
@@ -513,65 +513,65 @@ class Shopify_Pulse_Settings {
 
 			<form method="post" action="">
 				<?php wp_nonce_field( self::NONCE ); ?>
-				<div class="wafi-grid">
+				<div class="sp-grid">
 
-					<div class="wafi-card">
-						<div class="wafi-card__head"><span class="dashicons dashicons-admin-links"></span><?php esc_html_e( 'Connection', 'shopify-pulse-connector' ); ?></div>
-						<div class="wafi-card__body">
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[active]" value="1" <?php checked( $s['active'] ); ?> /> <strong><?php esc_html_e( 'Active', 'shopify-pulse-connector' ); ?></strong> — <?php esc_html_e( 'sync orders, carts, analytics & fraud', 'shopify-pulse-connector' ); ?></label>
+					<div class="sp-card">
+						<div class="sp-card__head"><span class="dashicons dashicons-admin-links"></span><?php esc_html_e( 'Connection', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[active]" value="1" <?php checked( $s['active'] ); ?> /> <strong><?php esc_html_e( 'Active', 'shopify-pulse-connector' ); ?></strong> — <?php esc_html_e( 'sync orders, carts, analytics & fraud', 'shopify-pulse-connector' ); ?></label>
 								<p class="description"><?php esc_html_e( 'Uncheck to pause all syncing without losing settings.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_api_base"><?php esc_html_e( 'Admin API base URL', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[api_base]" id="wafi_api_base" type="url" class="code" value="<?php echo esc_attr( $s['api_base'] ); ?>" placeholder="https://api.admin.yourdomain.com" />
+							<div class="sp-field">
+								<label class="h" for="sp_api_base"><?php esc_html_e( 'Admin API base URL', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[api_base]" id="sp_api_base" type="url" class="code" value="<?php echo esc_attr( $s['api_base'] ); ?>" placeholder="https://api.admin.yourdomain.com" />
 								<p class="description"><?php esc_html_e( 'Host only — /api/v1 is appended. Handles OAuth + /connect/*.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_storefront_base"><?php esc_html_e( 'Storefront API base URL', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[storefront_base]" id="wafi_storefront_base" type="url" class="code" value="<?php echo esc_attr( $s['storefront_base'] ); ?>" placeholder="https://api.yourdomain.com" />
+							<div class="sp-field">
+								<label class="h" for="sp_storefront_base"><?php esc_html_e( 'Storefront API base URL', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[storefront_base]" id="sp_storefront_base" type="url" class="code" value="<?php echo esc_attr( $s['storefront_base'] ); ?>" placeholder="https://api.yourdomain.com" />
 								<p class="description"><?php esc_html_e( 'Handles analytics + fraud. Blank = same host as admin.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_sid"><?php esc_html_e( 'Store SID', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[sid]" id="wafi_sid" type="text" class="code" value="<?php echo esc_attr( $s['sid'] ); ?>" />
+							<div class="sp-field">
+								<label class="h" for="sp_sid"><?php esc_html_e( 'Store SID', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[sid]" id="sp_sid" type="text" class="code" value="<?php echo esc_attr( $s['sid'] ); ?>" />
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_client_id"><?php esc_html_e( 'OAuth Client ID', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[client_id]" id="wafi_client_id" type="text" class="code" value="<?php echo esc_attr( $s['client_id'] ); ?>" placeholder="wapp_..." />
+							<div class="sp-field">
+								<label class="h" for="sp_client_id"><?php esc_html_e( 'OAuth Client ID', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[client_id]" id="sp_client_id" type="text" class="code" value="<?php echo esc_attr( $s['client_id'] ); ?>" placeholder="wapp_..." />
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_client_secret"><?php esc_html_e( 'OAuth Client Secret', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[client_secret]" id="wafi_client_secret" type="password" class="code" value="" placeholder="<?php echo '' !== $s['client_secret'] ? esc_attr__( '•••••••• (stored — leave blank to keep)', 'shopify-pulse-connector' ) : 'wsk_...'; ?>" autocomplete="new-password" />
+							<div class="sp-field">
+								<label class="h" for="sp_client_secret"><?php esc_html_e( 'OAuth Client Secret', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[client_secret]" id="sp_client_secret" type="password" class="code" value="" placeholder="<?php echo '' !== $s['client_secret'] ? esc_attr__( '•••••••• (stored — leave blank to keep)', 'shopify-pulse-connector' ) : 'wsk_...'; ?>" autocomplete="new-password" />
 							</div>
 						</div>
 					</div>
 
-					<div class="wafi-card">
-						<div class="wafi-card__head"><span class="dashicons dashicons-update"></span><?php esc_html_e( 'What to sync', 'shopify-pulse-connector' ); ?></div>
-						<div class="wafi-card__body">
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_orders]" value="1" <?php checked( $s['enable_orders'] ); ?> /> <?php esc_html_e( 'Orders (incl. incomplete/unpaid)', 'shopify-pulse-connector' ); ?></label>
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_abandoned]" value="1" <?php checked( $s['enable_abandoned'] ); ?> /> <?php esc_html_e( 'Abandoned carts (pushed instantly)', 'shopify-pulse-connector' ); ?></label>
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_analytics]" value="1" <?php checked( $s['enable_analytics'] ); ?> /> <?php esc_html_e( 'Analytics events (pixel / CAPI)', 'shopify-pulse-connector' ); ?></label>
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_fraud]" value="1" <?php checked( $s['enable_fraud'] ); ?> /> <?php esc_html_e( '4-layer fraud screening at checkout', 'shopify-pulse-connector' ); ?></label>
+					<div class="sp-card">
+						<div class="sp-card__head"><span class="dashicons dashicons-update"></span><?php esc_html_e( 'What to sync', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[enable_orders]" value="1" <?php checked( $s['enable_orders'] ); ?> /> <?php esc_html_e( 'Orders (incl. incomplete/unpaid)', 'shopify-pulse-connector' ); ?></label>
+								<label class="sp-check"><input type="checkbox" name="sp[enable_abandoned]" value="1" <?php checked( $s['enable_abandoned'] ); ?> /> <?php esc_html_e( 'Abandoned carts (pushed instantly)', 'shopify-pulse-connector' ); ?></label>
+								<label class="sp-check"><input type="checkbox" name="sp[enable_analytics]" value="1" <?php checked( $s['enable_analytics'] ); ?> /> <?php esc_html_e( 'Analytics events (pixel / CAPI)', 'shopify-pulse-connector' ); ?></label>
+								<label class="sp-check"><input type="checkbox" name="sp[enable_fraud]" value="1" <?php checked( $s['enable_fraud'] ); ?> /> <?php esc_html_e( '4-layer fraud screening at checkout', 'shopify-pulse-connector' ); ?></label>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_fraud_action"><?php esc_html_e( 'When fraud is detected', 'shopify-pulse-connector' ); ?></label>
-								<select name="wafi[fraud_action]" id="wafi_fraud_action">
+							<div class="sp-field">
+								<label class="h" for="sp_fraud_action"><?php esc_html_e( 'When fraud is detected', 'shopify-pulse-connector' ); ?></label>
+								<select name="sp[fraud_action]" id="sp_fraud_action">
 									<option value="block" <?php selected( $s['fraud_action'], 'block' ); ?>><?php esc_html_e( 'Block checkout', 'shopify-pulse-connector' ); ?></option>
 									<option value="hold" <?php selected( $s['fraud_action'], 'hold' ); ?>><?php esc_html_e( 'Allow, set order On hold', 'shopify-pulse-connector' ); ?></option>
 									<option value="flag" <?php selected( $s['fraud_action'], 'flag' ); ?>><?php esc_html_e( 'Allow, add a flag note', 'shopify-pulse-connector' ); ?></option>
 								</select>
 								<p class="description"><?php esc_html_e( 'Phone/name/address, IP velocity, courier history. Fails open if the API is unreachable.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_courier_ratio"><?php esc_html_e( 'Courier ratio gate', 'shopify-pulse-connector' ); ?></label>
+							<div class="sp-field">
+								<label class="h" for="sp_courier_ratio"><?php esc_html_e( 'Courier ratio gate', 'shopify-pulse-connector' ); ?></label>
 								<span style="display:inline-flex;align-items:center;gap:6px;">
 									<?php esc_html_e( 'Block orders below', 'shopify-pulse-connector' ); ?>
-									<input name="wafi[courier_min_ratio]" id="wafi_courier_ratio" type="number" min="0" max="100" step="1" value="<?php echo esc_attr( $s['courier_min_ratio'] ); ?>" class="small-text" /> %
+									<input name="sp[courier_min_ratio]" id="sp_courier_ratio" type="number" min="0" max="100" step="1" value="<?php echo esc_attr( $s['courier_min_ratio'] ); ?>" class="small-text" /> %
 									<?php esc_html_e( 'success, once the customer has', 'shopify-pulse-connector' ); ?>
-									<input name="wafi[courier_min_parcels]" type="number" min="1" step="1" value="<?php echo esc_attr( $s['courier_min_parcels'] ); ?>" class="small-text" />
+									<input name="sp[courier_min_parcels]" type="number" min="1" step="1" value="<?php echo esc_attr( $s['courier_min_parcels'] ); ?>" class="small-text" />
 									<?php esc_html_e( 'parcels', 'shopify-pulse-connector' ); ?>
 								</span>
 								<p class="description"><?php esc_html_e( 'Set 0 to disable. e.g. 60 or 75 — customers whose bdcourier delivery-success ratio is below this (with enough parcel history) are blocked at checkout. Fails open if the API is unreachable.', 'shopify-pulse-connector' ); ?></p>
@@ -579,39 +579,39 @@ class Shopify_Pulse_Settings {
 						</div>
 					</div>
 
-					<div class="wafi-card">
-						<div class="wafi-card__head"><span class="dashicons dashicons-randomize"></span><?php esc_html_e( 'Two-way sync', 'shopify-pulse-connector' ); ?></div>
-						<div class="wafi-card__body">
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_customer_sync]" value="1" <?php checked( $s['enable_customer_sync'] ); ?> /> <strong><?php esc_html_e( 'Customers', 'shopify-pulse-connector' ); ?></strong></label>
-								<select name="wafi[customer_sync_dir]" id="wafi_cust_dir">
+					<div class="sp-card">
+						<div class="sp-card__head"><span class="dashicons dashicons-randomize"></span><?php esc_html_e( 'Two-way sync', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[enable_customer_sync]" value="1" <?php checked( $s['enable_customer_sync'] ); ?> /> <strong><?php esc_html_e( 'Customers', 'shopify-pulse-connector' ); ?></strong></label>
+								<select name="sp[customer_sync_dir]" id="sp_cust_dir">
 									<option value="both" <?php selected( $s['customer_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'shopify-pulse-connector' ); ?></option>
 									<option value="push" <?php selected( $s['customer_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'shopify-pulse-connector' ); ?></option>
 									<option value="pull" <?php selected( $s['customer_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'shopify-pulse-connector' ); ?></option>
 								</select>
 								<p class="description"><?php esc_html_e( 'Matched by email/phone. Needs customers.read + customers.write.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_category_sync]" value="1" <?php checked( $s['enable_category_sync'] ); ?> /> <strong><?php esc_html_e( 'Categories', 'shopify-pulse-connector' ); ?></strong></label>
-								<select name="wafi[category_sync_dir]" id="wafi_category_dir">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[enable_category_sync]" value="1" <?php checked( $s['enable_category_sync'] ); ?> /> <strong><?php esc_html_e( 'Categories', 'shopify-pulse-connector' ); ?></strong></label>
+								<select name="sp[category_sync_dir]" id="sp_category_dir">
 									<option value="push" <?php selected( $s['category_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'shopify-pulse-connector' ); ?></option>
 									<option value="both" <?php selected( $s['category_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'shopify-pulse-connector' ); ?></option>
 									<option value="pull" <?php selected( $s['category_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'shopify-pulse-connector' ); ?></option>
 								</select>
 								<p class="description"><?php esc_html_e( 'Product categories + hierarchy. Matched to the platform by handle/slug. Needs categories.read + categories.write.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_brand_sync]" value="1" <?php checked( $s['enable_brand_sync'] ); ?> /> <strong><?php esc_html_e( 'Brands', 'shopify-pulse-connector' ); ?></strong></label>
-								<select name="wafi[brand_sync_dir]" id="wafi_brand_dir">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[enable_brand_sync]" value="1" <?php checked( $s['enable_brand_sync'] ); ?> /> <strong><?php esc_html_e( 'Brands', 'shopify-pulse-connector' ); ?></strong></label>
+								<select name="sp[brand_sync_dir]" id="sp_brand_dir">
 									<option value="push" <?php selected( $s['brand_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'shopify-pulse-connector' ); ?></option>
 									<option value="both" <?php selected( $s['brand_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'shopify-pulse-connector' ); ?></option>
 									<option value="pull" <?php selected( $s['brand_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'shopify-pulse-connector' ); ?></option>
 								</select>
 								<p class="description"><?php esc_html_e( 'Any brand taxonomy (native WC, Perfect Brands, YITH…). Matched by handle/slug. Needs brands.read + brands.write.', 'shopify-pulse-connector' ); ?></p>
 							</div>
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[enable_product_sync]" value="1" <?php checked( $s['enable_product_sync'] ); ?> /> <strong><?php esc_html_e( 'Products', 'shopify-pulse-connector' ); ?></strong></label>
-								<select name="wafi[product_sync_dir]" id="wafi_product_dir">
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[enable_product_sync]" value="1" <?php checked( $s['enable_product_sync'] ); ?> /> <strong><?php esc_html_e( 'Products', 'shopify-pulse-connector' ); ?></strong></label>
+								<select name="sp[product_sync_dir]" id="sp_product_dir">
 									<option value="both" <?php selected( $s['product_sync_dir'], 'both' ); ?>><?php esc_html_e( 'Two-way (last edit wins)', 'shopify-pulse-connector' ); ?></option>
 									<option value="push" <?php selected( $s['product_sync_dir'], 'push' ); ?>><?php esc_html_e( 'WooCommerce → Platform', 'shopify-pulse-connector' ); ?></option>
 									<option value="pull" <?php selected( $s['product_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'shopify-pulse-connector' ); ?></option>
@@ -621,43 +621,43 @@ class Shopify_Pulse_Settings {
 						</div>
 					</div>
 
-					<div class="wafi-card">
-						<div class="wafi-card__head"><span class="dashicons dashicons-admin-generic"></span><?php esc_html_e( 'Advanced', 'shopify-pulse-connector' ); ?></div>
-						<div class="wafi-card__body">
-							<div class="wafi-field">
+					<div class="sp-card">
+						<div class="sp-card__head"><span class="dashicons dashicons-admin-generic"></span><?php esc_html_e( 'Advanced', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
+							<div class="sp-field">
 								<label class="h"><?php esc_html_e( 'Order statuses to push', 'shopify-pulse-connector' ); ?></label>
 								<?php foreach ( $wc_statuses as $key => $label ) : ?>
 									<?php $slug = preg_replace( '/^wc-/', '', $key ); ?>
-									<label class="wafi-check" style="display:inline-block;min-width:150px;margin-right:8px;">
-										<input type="checkbox" name="wafi[order_statuses][]" value="<?php echo esc_attr( $slug ); ?>" <?php checked( in_array( $slug, (array) $s['order_statuses'], true ) ); ?> />
+									<label class="sp-check" style="display:inline-block;min-width:150px;margin-right:8px;">
+										<input type="checkbox" name="sp[order_statuses][]" value="<?php echo esc_attr( $slug ); ?>" <?php checked( in_array( $slug, (array) $s['order_statuses'], true ) ); ?> />
 										<?php echo esc_html( $label ); ?>
 									</label>
 								<?php endforeach; ?>
 							</div>
-							<div class="wafi-field">
-								<label class="h" for="wafi_idle"><?php esc_html_e( 'Abandoned idle threshold (minutes)', 'shopify-pulse-connector' ); ?></label>
-								<input name="wafi[abandoned_idle_min]" id="wafi_idle" type="number" min="5" value="<?php echo esc_attr( $s['abandoned_idle_min'] ); ?>" class="small-text" />
+							<div class="sp-field">
+								<label class="h" for="sp_idle"><?php esc_html_e( 'Abandoned idle threshold (minutes)', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[abandoned_idle_min]" id="sp_idle" type="number" min="5" value="<?php echo esc_attr( $s['abandoned_idle_min'] ); ?>" class="small-text" />
 							</div>
-							<div class="wafi-field">
-								<label class="wafi-check"><input type="checkbox" name="wafi[allow_status_writeback]" value="1" <?php checked( $s['allow_status_writeback'] ); ?> /> <?php esc_html_e( 'Let the platform update WooCommerce order status', 'shopify-pulse-connector' ); ?></label>
-								<label class="wafi-check"><input type="checkbox" name="wafi[debug_log]" value="1" <?php checked( $s['debug_log'] ); ?> /> <?php esc_html_e( 'Verbose debug logging (WooCommerce › Status › Logs)', 'shopify-pulse-connector' ); ?></label>
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[allow_status_writeback]" value="1" <?php checked( $s['allow_status_writeback'] ); ?> /> <?php esc_html_e( 'Let the platform update WooCommerce order status', 'shopify-pulse-connector' ); ?></label>
+								<label class="sp-check"><input type="checkbox" name="sp[debug_log]" value="1" <?php checked( $s['debug_log'] ); ?> /> <?php esc_html_e( 'Verbose debug logging (WooCommerce › Status › Logs)', 'shopify-pulse-connector' ); ?></label>
 							</div>
 						</div>
 					</div>
 
-					<div class="wafi-card">
-						<div class="wafi-card__head"><span class="dashicons dashicons-location"></span><?php esc_html_e( 'Shipping mapping', 'shopify-pulse-connector' ); ?></div>
-						<div class="wafi-card__body">
+					<div class="sp-card">
+						<div class="sp-card__head"><span class="dashicons dashicons-location"></span><?php esc_html_e( 'Shipping mapping', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
 							<?php if ( empty( $ship_methods ) ) : ?>
 								<p class="description" style="margin-top:0;"><?php esc_html_e( 'No WooCommerce shipping methods found. Add zones + methods in WooCommerce › Settings › Shipping.', 'shopify-pulse-connector' ); ?></p>
 							<?php else : ?>
 								<p class="description" style="margin-top:0;"><?php esc_html_e( 'Map each WooCommerce shipping method to a platform shipping rate. Mapped charges link to that rate on the platform; unmapped ones raise a reconciliation alert.', 'shopify-pulse-connector' ); ?></p>
 								<?php $map = (array) $s['shipping_map']; ?>
 								<?php foreach ( $ship_methods as $key => $label ) : ?>
-									<div class="wafi-field">
+									<div class="sp-field">
 										<label class="h"><?php echo esc_html( $label ); ?> <span class="description">(<?php echo esc_html( $key ); ?>)</span></label>
 										<?php if ( ! empty( $ship_rates ) ) : ?>
-											<select name="wafi[shipping_map][<?php echo esc_attr( $key ); ?>]">
+											<select name="sp[shipping_map][<?php echo esc_attr( $key ); ?>]">
 												<option value="0"><?php esc_html_e( '— not mapped —', 'shopify-pulse-connector' ); ?></option>
 												<?php foreach ( $ship_rates as $r ) : $rid = isset( $r['id'] ) ? (int) $r['id'] : 0; ?>
 													<option value="<?php echo esc_attr( $rid ); ?>" <?php selected( isset( $map[ $key ] ) ? (int) $map[ $key ] : 0, $rid ); ?>>
@@ -666,7 +666,7 @@ class Shopify_Pulse_Settings {
 												<?php endforeach; ?>
 											</select>
 										<?php else : ?>
-											<input type="number" min="0" name="wafi[shipping_map][<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( isset( $map[ $key ] ) ? $map[ $key ] : '' ); ?>" placeholder="<?php esc_attr_e( 'platform rate id', 'shopify-pulse-connector' ); ?>" class="small-text" />
+											<input type="number" min="0" name="sp[shipping_map][<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( isset( $map[ $key ] ) ? $map[ $key ] : '' ); ?>" placeholder="<?php esc_attr_e( 'platform rate id', 'shopify-pulse-connector' ); ?>" class="small-text" />
 										<?php endif; ?>
 									</div>
 								<?php endforeach; ?>
@@ -686,7 +686,7 @@ class Shopify_Pulse_Settings {
 		</div>
 		<script>
 		( function () {
-			var out   = document.getElementById( 'wafi-test-result' );
+			var out   = document.getElementById( 'sp-test-result' );
 			var nonce = <?php echo wp_json_encode( wp_create_nonce( self::NONCE ) ); ?>;
 			function call( action, pending ) {
 				out.textContent = pending;
@@ -702,9 +702,9 @@ class Shopify_Pulse_Settings {
 					} )
 					.catch( function () { out.textContent = 'Request failed'; out.style.color = '#b32d2e'; } );
 			}
-			var t = document.getElementById( 'wafi-test-connection' );
+			var t = document.getElementById( 'sp-test-connection' );
 			if ( t ) { t.addEventListener( 'click', function () { call( 'shopify_pulse_test', <?php echo wp_json_encode( __( 'Verifying…', 'shopify-pulse-connector' ) ); ?> ); } ); }
-			var s = document.getElementById( 'wafi-sync-now' );
+			var s = document.getElementById( 'sp-sync-now' );
 			if ( s ) { s.addEventListener( 'click', function () { call( 'shopify_pulse_sync_now', <?php echo wp_json_encode( __( 'Queueing…', 'shopify-pulse-connector' ) ); ?> ); } ); }
 		} )();
 		</script>

@@ -3,7 +3,7 @@
  * Activation / deactivation: the abandoned-cart capture table and the two
  * WP-Cron schedules (abandoned sweep, status poll).
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -14,38 +14,41 @@ class Shopify_Pulse_Install {
 
 	/** Register custom cron cadences. Hooked on `cron_schedules` globally. */
 	public static function cron_schedules( $schedules ) {
-		if ( ! isset( $schedules['wafi_10min'] ) ) {
-			$schedules['wafi_10min'] = array(
+		if ( ! isset( $schedules['sp_10min'] ) ) {
+			$schedules['sp_10min'] = array(
 				'interval' => 10 * MINUTE_IN_SECONDS,
-				'display'  => __( 'Every 10 minutes (Wafi)', 'shopify-pulse-connector' ),
+				'display'  => __( 'Every 10 minutes (Shopify Pulse)', 'shopify-pulse-connector' ),
 			);
 		}
-		if ( ! isset( $schedules['wafi_15min'] ) ) {
-			$schedules['wafi_15min'] = array(
+		if ( ! isset( $schedules['sp_15min'] ) ) {
+			$schedules['sp_15min'] = array(
 				'interval' => 15 * MINUTE_IN_SECONDS,
-				'display'  => __( 'Every 15 minutes (Wafi)', 'shopify-pulse-connector' ),
+				'display'  => __( 'Every 15 minutes (Shopify Pulse)', 'shopify-pulse-connector' ),
 			);
 		}
 		return $schedules;
 	}
 
 	public static function activate() {
-		self::migrate_from_wafi();
+		self::migrate_legacy();
 		self::create_table();
 		self::schedule_crons();
 		update_option( 'shopify_pulse_version', SHOPIFY_PULSE_VERSION, false );
 	}
 
 	/**
-	 * Carry state over from the pre-rename "Wafi Commerce Connector" plugin.
-	 * The order/term/product meta keys and the abandoned-cart table name are
-	 * deliberately unchanged by the rename, so every already-synced order keeps
-	 * its platform link with no data migration — only the option keys moved.
-	 * Idempotent: runs on activate + on every version change, copies only when
-	 * the new option is absent, and clears the old plugin's orphaned WP-Cron
-	 * hooks (their handlers were renamed).
+	 * Carry state + data over from the pre-rename "Wafi Commerce Connector"
+	 * plugin (and its interim Shopify Pulse build). Copies the old settings +
+	 * status options, RENAMES the abandoned-cart table, and RE-KEYS our meta
+	 * from the old `_wafi_` prefix to `_sp_` across every meta store (posts /
+	 * products, users, terms, HPOS order meta) so already-synced orders keep
+	 * their platform link. Idempotent: runs on activate + on every version
+	 * change; each step is guarded so re-runs are cheap no-ops.
 	 */
-	private static function migrate_from_wafi() {
+	private static function migrate_legacy() {
+		global $wpdb;
+
+		// 1. Options from the original Wafi plugin.
 		$options = array(
 			'shopify_pulse_settings' => 'wafi_connector_settings',
 			'shopify_pulse_status'   => 'wafi_connector_status',
@@ -58,13 +61,38 @@ class Shopify_Pulse_Install {
 				}
 			}
 		}
-		$old_hooks = array(
+
+		// 2. Rename the abandoned-cart table (preserves rows).
+		$old_table = $wpdb->prefix . 'wafi_abandoned_carts';
+		$new_table = $wpdb->prefix . 'sp_abandoned_carts';
+		if ( $old_table === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $old_table ) ) // phpcs:ignore WordPress.DB
+			&& $new_table !== $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $new_table ) ) ) { // phpcs:ignore WordPress.DB
+			$wpdb->query( "RENAME TABLE `{$old_table}` TO `{$new_table}`" ); // phpcs:ignore WordPress.DB
+		}
+
+		// 3. Re-key our meta `_wafi_*` -> `_sp_*` in every meta store.
+		$meta_tables = array( $wpdb->postmeta, $wpdb->usermeta, $wpdb->termmeta );
+		$hpos        = $wpdb->prefix . 'wc_orders_meta';
+		if ( $hpos === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $hpos ) ) ) { // phpcs:ignore WordPress.DB
+			$meta_tables[] = $hpos;
+		}
+		foreach ( $meta_tables as $t ) {
+			$wpdb->query( "UPDATE `{$t}` SET meta_key = CONCAT('_sp_', SUBSTRING(meta_key, 7)) WHERE SUBSTRING(meta_key, 1, 6) = '_wafi_'" ); // phpcs:ignore WordPress.DB
+		}
+
+		// 4. Clear the original plugin's cron hooks + our own (so schedule_crons
+		//    re-registers them on the renamed cadence, not the stale one).
+		$stale = array(
 			'wafi_connector_abandoned_sweep',
 			'wafi_connector_status_poll',
 			'wafi_connector_customer_pull',
 			'wafi_connector_catalog_pull',
+			SHOPIFY_PULSE_ABANDONED_CRON,
+			SHOPIFY_PULSE_POLL_CRON,
+			SHOPIFY_PULSE_CUSTOMER_PULL_CRON,
+			SHOPIFY_PULSE_CATALOG_PULL_CRON,
 		);
-		foreach ( $old_hooks as $hook ) {
+		foreach ( $stale as $hook ) {
 			wp_clear_scheduled_hook( $hook );
 		}
 	}
@@ -80,7 +108,7 @@ class Shopify_Pulse_Install {
 		if ( SHOPIFY_PULSE_VERSION === get_option( 'shopify_pulse_version' ) ) {
 			return;
 		}
-		self::migrate_from_wafi();
+		self::migrate_legacy();
 		self::create_table();
 		self::schedule_crons();
 		update_option( 'shopify_pulse_version', SHOPIFY_PULSE_VERSION, false );
@@ -95,16 +123,16 @@ class Shopify_Pulse_Install {
 
 	public static function schedule_crons() {
 		if ( ! wp_next_scheduled( SHOPIFY_PULSE_ABANDONED_CRON ) ) {
-			wp_schedule_event( time() + 300, 'wafi_15min', SHOPIFY_PULSE_ABANDONED_CRON );
+			wp_schedule_event( time() + 300, 'sp_15min', SHOPIFY_PULSE_ABANDONED_CRON );
 		}
 		if ( ! wp_next_scheduled( SHOPIFY_PULSE_POLL_CRON ) ) {
-			wp_schedule_event( time() + 300, 'wafi_10min', SHOPIFY_PULSE_POLL_CRON );
+			wp_schedule_event( time() + 300, 'sp_10min', SHOPIFY_PULSE_POLL_CRON );
 		}
 		if ( ! wp_next_scheduled( SHOPIFY_PULSE_CUSTOMER_PULL_CRON ) ) {
-			wp_schedule_event( time() + 300, 'wafi_15min', SHOPIFY_PULSE_CUSTOMER_PULL_CRON );
+			wp_schedule_event( time() + 300, 'sp_15min', SHOPIFY_PULSE_CUSTOMER_PULL_CRON );
 		}
 		if ( ! wp_next_scheduled( SHOPIFY_PULSE_CATALOG_PULL_CRON ) ) {
-			wp_schedule_event( time() + 300, 'wafi_15min', SHOPIFY_PULSE_CATALOG_PULL_CRON );
+			wp_schedule_event( time() + 300, 'sp_15min', SHOPIFY_PULSE_CATALOG_PULL_CRON );
 		}
 	}
 

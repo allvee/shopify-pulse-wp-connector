@@ -4,7 +4,7 @@
  * (IngestOrderDto). Lines are pushed FREE-TEXT (title/sku/price, no variantId)
  * so ingestion never touches platform inventory — the platform mirrors Woo.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

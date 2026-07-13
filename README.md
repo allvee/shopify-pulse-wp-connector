@@ -117,7 +117,7 @@ For a step-by-step walkthrough, see `SETUP.md` in this repo or the **Quick setup
 
 ## Configuration
 
-All settings live in the `wafi_connector_settings` option.
+All settings live in the `sp_connector_settings` option.
 
 **Connection**
 
@@ -162,27 +162,27 @@ The **Shopify Pulse** settings page gives you:
 
 ```
 includes/
-├── class-wafi-plugin.php          Singleton orchestrator / bootstrap
-├── class-wafi-settings.php        Admin screen + Verify / Sync / status badge
-├── class-wafi-api-client.php      OAuth token + signed HTTP (admin + storefront hosts)
-├── class-wafi-logger.php          WC_Logger wrapper
-├── class-wafi-order-mapper.php    WC_Order → payload
-├── class-wafi-order-sync.php      Order hooks → Action Scheduler → /connect/orders
-├── class-wafi-status-poller.php   Poll → reconcile WC status (forward-only)
-├── class-wafi-abandoned-sync.php  Capture table + idle-cart sweep
-├── class-wafi-attribution.php     Visitor tracker → order metafield
-├── class-wafi-analytics.php       Server Purchase + browser event proxy
-├── class-wafi-fraud.php           Checkout screen → block / hold / flag
-├── class-wafi-customer-sync.php   Customers push + pull
-├── class-wafi-catalog-sync.php    Categories + brands push + pull
-├── class-wafi-product-sync.php    Products + variations push + pull
-├── class-wafi-seo-sync.php        Redirects (301/302) + robots rules
-├── class-wafi-seo.php             Yoast / Rank Math / AIOSEO read + write bridge
-└── class-wafi-install.php         Capture-table dbDelta + cron schedules
+├── class-sp-plugin.php          Singleton orchestrator / bootstrap
+├── class-sp-settings.php        Admin screen + Verify / Sync / status badge
+├── class-sp-api-client.php      OAuth token + signed HTTP (admin + storefront hosts)
+├── class-sp-logger.php          WC_Logger wrapper
+├── class-sp-order-mapper.php    WC_Order → payload
+├── class-sp-order-sync.php      Order hooks → Action Scheduler → /connect/orders
+├── class-sp-status-poller.php   Poll → reconcile WC status (forward-only)
+├── class-sp-abandoned-sync.php  Capture table + idle-cart sweep
+├── class-sp-attribution.php     Visitor tracker → order metafield
+├── class-sp-analytics.php       Server Purchase + browser event proxy
+├── class-sp-fraud.php           Checkout screen → block / hold / flag
+├── class-sp-customer-sync.php   Customers push + pull
+├── class-sp-catalog-sync.php    Categories + brands push + pull
+├── class-sp-product-sync.php    Products + variations push + pull
+├── class-sp-seo-sync.php        Redirects (301/302) + robots rules
+├── class-sp-seo.php             Yoast / Rank Math / AIOSEO read + write bridge
+└── class-sp-install.php         Capture-table dbDelta + cron schedules
 
 assets/
-├── js/wafi-attr.js                Attribution tracker
-└── js/wafi-pixel.js               Browser analytics events
+├── js/sp-attr.js                Attribution tracker
+└── js/sp-pixel.js               Browser analytics events
 
 uninstall.php                      Cleans options, token, cron, and the capture table
 ```
@@ -205,10 +205,10 @@ uninstall.php                      Cleans options, token, cron, and the capture 
 
 ## Extending
 
-Use the `wafi_connector_order_payload` filter to mutate the order payload before it is pushed.
+Use the `sp_connector_order_payload` filter to mutate the order payload before it is pushed.
 
 ```php
-add_filter( 'wafi_connector_order_payload', function ( array $payload, WC_Order $order ) {
+add_filter( 'sp_connector_order_payload', function ( array $payload, WC_Order $order ) {
     // Attach a custom field to every mirrored order.
     $payload['metafields']['app:woocommerce/gift_note'] = $order->get_customer_note();
 
