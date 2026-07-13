@@ -1,7 +1,7 @@
 <?php
 /**
  * Thin wrapper over WC_Logger so all connector output lands in one source
- * ("wafi-connector") under WooCommerce › Status › Logs.
+ * ("shopify-pulse-connector") under WooCommerce › Status › Logs.
  *
  * @package WafiConnector
  */
@@ -10,15 +10,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Logger {
+class Shopify_Pulse_Logger {
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
 
 	/** @var WC_Logger_Interface|null */
 	private $wc_logger = null;
 
-	public function __construct( Wafi_Connector_Settings $settings ) {
+	public function __construct( Shopify_Pulse_Settings $settings ) {
 		$this->settings = $settings;
 	}
 
@@ -45,7 +45,7 @@ class Wafi_Connector_Logger {
 		if ( ! is_scalar( $message ) ) {
 			$message = wp_json_encode( $message );
 		}
-		$logger->log( $level, (string) $message, array( 'source' => 'wafi-connector' ) );
+		$logger->log( $level, (string) $message, array( 'source' => 'shopify-pulse-connector' ) );
 	}
 
 	public function error( $message ) {

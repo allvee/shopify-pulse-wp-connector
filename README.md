@@ -1,8 +1,8 @@
 <div align="center">
 
-# Wafi Commerce Connector
+# Shopify Pulse Connector
 
-**Connect your WooCommerce store to the Wafi Commerce platform — two-way sync, server-side analytics, and fraud screening in one plugin.**
+**Connect your WooCommerce store to the Shopify Pulse platform — two-way sync, server-side analytics, and fraud screening in one plugin.**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-21759b.svg)
@@ -14,7 +14,7 @@
 
 ---
 
-Wafi Commerce Connector links a single WooCommerce store to the Wafi Commerce platform. It keeps customers and catalog in sync both ways, mirrors every order for reporting, pushes server-side conversion events, and screens checkouts through the platform's fraud engine — all from one admin screen.
+Shopify Pulse Connector links a single WooCommerce store to the Shopify Pulse platform. It keeps customers and catalog in sync both ways, mirrors every order for reporting, pushes server-side conversion events, and screens checkouts through the platform's fraud engine — all from one admin screen.
 
 > **This is the store-side plugin.** The platform-side connector API lives in a companion repository (`api.wafiperume.com`, under `apps/admin-api/.../connector`; see `docs/runbooks/woocommerce-connector.md`). This README covers only what runs on your WordPress site.
 
@@ -93,7 +93,7 @@ Wafi Commerce Connector links a single WooCommerce store to the Wafi Commerce pl
 | WordPress | 5.8+ | |
 | WooCommerce | 6.0+ | HPOS-compatible |
 | PHP | 7.4+ | |
-| Wafi store | One per site | One OAuth app = one store |
+| Shopify Pulse store | One per site | One OAuth app = one store |
 
 Authentication is OAuth 2.0 `client_credentials`. The plugin mints a `wat_` bearer token (1-hour TTL, auto-refreshed) via `POST {admin}/api/v1/oauth/token` and sends `Authorization` plus `X-Store-Sid` on every request. The admin host handles OAuth and `/connect/*`; the storefront host handles `/pixel/*` and `/fraud/*` (leave the storefront base blank to use the same host).
 
@@ -109,8 +109,8 @@ brands.write     categories.write     collections.write
 ## Installation
 
 1. Upload and activate the plugin (**Plugins → Add New → Upload**, or drop the folder in `wp-content/plugins/`).
-2. Register an OAuth app for your store on the Wafi platform, grant the scopes listed above, and copy the **client id**, **client secret**, and **store SID**.
-3. Open **Wafi Connector** in the WordPress admin, enter the API base URL and credentials, and click **Verify connection**.
+2. Register an OAuth app for your store on the Shopify Pulse platform, grant the scopes listed above, and copy the **client id**, **client secret**, and **store SID**.
+3. Open **Shopify Pulse** in the WordPress admin, enter the API base URL and credentials, and click **Verify connection**.
 4. Enable the features you want, set sync directions, then flip the **Active** master switch on.
 
 For a step-by-step walkthrough, see `SETUP.md` in this repo or the **Quick setup guide** panel on the plugin's settings page.
@@ -150,7 +150,7 @@ All settings live in the `wafi_connector_settings` option.
 
 ## Admin screen
 
-The **Wafi Connector** settings page gives you:
+The **Shopify Pulse** settings page gives you:
 
 - **Status badge** — live connection state: **Connected**, **Paused**, or **Not verified**.
 - **Active master switch** — pauses every sync at once while preserving all settings.
@@ -218,7 +218,7 @@ add_filter( 'wafi_connector_order_payload', function ( array $payload, WC_Order 
 
 ## Notes
 
-- **One store per app.** A WooCommerce site connects to exactly one Wafi store (one OAuth app = one store).
+- **One store per app.** A WooCommerce site connects to exactly one Shopify Pulse store (one OAuth app = one store).
 - **Purchase is server-side.** The authoritative `Purchase` event fires from the server and is deduped by the platform on order id; browser events are supplemental.
 - **Order lines are free-text.** Mirrored order lines carry no platform inventory impact — stock stays in WooCommerce.
 - **Variant pull needs the product first.** Pulling variants requires the parent product to already exist on the WooCommerce side.

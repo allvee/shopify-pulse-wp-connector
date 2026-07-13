@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Seo {
+class Shopify_Pulse_Seo {
 
 	/**
 	 * Read SEO for a post (product). Returns [] when nothing is set.

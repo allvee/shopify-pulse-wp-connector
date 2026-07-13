@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Order_Mapper {
+class Shopify_Pulse_Order_Mapper {
 
 	/**
 	 * @param WC_Order $order
@@ -49,7 +49,7 @@ class Wafi_Connector_Order_Mapper {
 				$fee_discount += -$amt;
 			} elseif ( $amt > 0 ) {
 				$lines[] = array(
-					'title'    => $fee->get_name() ? $fee->get_name() : __( 'Fee', 'wafi-connector' ),
+					'title'    => $fee->get_name() ? $fee->get_name() : __( 'Fee', 'shopify-pulse-connector' ),
 					'quantity' => 1,
 					'price'    => $amt,
 				);
@@ -61,7 +61,7 @@ class Wafi_Connector_Order_Mapper {
 		if ( empty( $lines ) ) {
 			$residual = (float) $order->get_total() - (float) $order->get_total_tax() - (float) $order->get_shipping_total() + $fee_discount;
 			$lines[]  = array(
-				'title'    => __( 'WooCommerce order', 'wafi-connector' ),
+				'title'    => __( 'WooCommerce order', 'shopify-pulse-connector' ),
 				'quantity' => 1,
 				'price'    => (float) max( 0, round( $residual, 2 ) ),
 			);
@@ -121,7 +121,7 @@ class Wafi_Connector_Order_Mapper {
 			$payload['shippingLines'] = $shipping_lines;
 		}
 
-		$blob        = Wafi_Connector_Attribution::get( $order );
+		$blob        = Shopify_Pulse_Attribution::get( $order );
 		$attribution = self::attribution( $order, $blob );
 		if ( ! empty( $attribution ) ) {
 			$payload['attribution'] = $attribution;
@@ -138,7 +138,7 @@ class Wafi_Connector_Order_Mapper {
 		 * @param array    $payload
 		 * @param WC_Order $order
 		 */
-		return apply_filters( 'wafi_connector_order_payload', $payload, $order );
+		return apply_filters( 'shopify_pulse_order_payload', $payload, $order );
 	}
 
 	private static function line_items( WC_Order $order ) {
@@ -187,7 +187,7 @@ class Wafi_Connector_Order_Mapper {
 			/** @var WC_Order_Item_Shipping $item */
 			$method_id   = is_callable( array( $item, 'get_method_id' ) ) ? (string) $item->get_method_id() : '';
 			$instance_id = is_callable( array( $item, 'get_instance_id' ) ) ? (string) $item->get_instance_id() : '';
-			$title       = $item->get_name() ? $item->get_name() : __( 'Shipping', 'wafi-connector' );
+			$title       = $item->get_name() ? $item->get_name() : __( 'Shipping', 'shopify-pulse-connector' );
 
 			$code = '' !== $method_id
 				? $method_id . ( '' !== $instance_id ? ':' . $instance_id : '' )
@@ -220,7 +220,7 @@ class Wafi_Connector_Order_Mapper {
 	 * @return array<string,int>
 	 */
 	private static function shipping_map() {
-		$opt = get_option( WAFI_CONNECTOR_OPTION, array() );
+		$opt = get_option( SHOPIFY_PULSE_OPTION, array() );
 		return ( is_array( $opt ) && isset( $opt['shipping_map'] ) && is_array( $opt['shipping_map'] ) )
 			? $opt['shipping_map']
 			: array();

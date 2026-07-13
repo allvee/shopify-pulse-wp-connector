@@ -15,20 +15,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Seo_Sync {
+class Shopify_Pulse_Seo_Sync {
 
 	const REDIRECTS_OPTION = 'wafi_redirects';
 	const ROBOTS_OPTION    = 'wafi_robots_disallow';
 	const CURSOR_OPTION    = 'wafi_redirect_cursor';
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -44,12 +44,12 @@ class Wafi_Connector_Seo_Sync {
 
 		$dir = $this->settings->get( 'catalog_sync_dir', 'push' );
 		if ( 'pull' === $dir || 'both' === $dir ) {
-			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
+			add_action( SHOPIFY_PULSE_CATALOG_PULL_CRON, array( $this, 'pull' ) );
 		}
 		if ( 'push' === $dir || 'both' === $dir ) {
 			// Push WordPress-authored redirects (from the active redirect plugin)
 			// up to the platform, on the same tick as the pull.
-			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'push_redirects' ) );
+			add_action( SHOPIFY_PULSE_CATALOG_PULL_CRON, array( $this, 'push_redirects' ) );
 		}
 	}
 

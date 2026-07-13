@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Analytics {
+class Shopify_Pulse_Analytics {
 
 	const NONCE = 'wafi_pixel';
 
@@ -26,14 +26,14 @@ class Wafi_Connector_Analytics {
 		'Lead', 'Contact', 'Subscribe',
 	);
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -54,7 +54,7 @@ class Wafi_Connector_Analytics {
 	/** Server-side Purchase — deduped by the platform on order_id. */
 	public function track_purchase( $order_id ) {
 		$order = wc_get_order( $order_id );
-		if ( ! $order || $order->get_meta( WAFI_CONNECTOR_META_PIXEL_SENT ) ) {
+		if ( ! $order || $order->get_meta( SHOPIFY_PULSE_META_PIXEL_SENT ) ) {
 			return;
 		}
 
@@ -96,7 +96,7 @@ class Wafi_Connector_Analytics {
 
 		$res = $this->api->public_post( '/pixel/events', array( 'events' => array( $event ) ) );
 		if ( ! is_wp_error( $res ) ) {
-			$order->update_meta_data( WAFI_CONNECTOR_META_PIXEL_SENT, current_time( 'mysql' ) );
+			$order->update_meta_data( SHOPIFY_PULSE_META_PIXEL_SENT, current_time( 'mysql' ) );
 			$order->save();
 			$this->logger->debug( 'Purchase pixel sent for order ' . $order->get_id() );
 		} else {
@@ -130,9 +130,9 @@ class Wafi_Connector_Analytics {
 		}
 		wp_register_script(
 			'wafi-pixel',
-			WAFI_CONNECTOR_URL . 'assets/js/wafi-pixel.js',
+			SHOPIFY_PULSE_URL . 'assets/js/wafi-pixel.js',
 			array(),
-			WAFI_CONNECTOR_VERSION,
+			SHOPIFY_PULSE_VERSION,
 			true
 		);
 

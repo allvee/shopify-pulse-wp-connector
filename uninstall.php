@@ -11,13 +11,13 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
-delete_option( 'wafi_connector_settings' );
-delete_option( 'wafi_connector_poll_cursor' );
-delete_option( 'wafi_connector_status' );
-delete_transient( 'wafi_connector_token' );
+delete_option( 'shopify_pulse_settings' );
+delete_option( 'shopify_pulse_poll_cursor' );
+delete_option( 'shopify_pulse_status' );
+delete_transient( 'shopify_pulse_token' );
 
-wp_clear_scheduled_hook( 'wafi_connector_abandoned_sweep' );
-wp_clear_scheduled_hook( 'wafi_connector_status_poll' );
+wp_clear_scheduled_hook( 'shopify_pulse_abandoned_sweep' );
+wp_clear_scheduled_hook( 'shopify_pulse_status_poll' );
 
 global $wpdb;
 $table = $wpdb->prefix . 'wafi_abandoned_carts';

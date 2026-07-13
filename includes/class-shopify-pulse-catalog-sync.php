@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Catalog_Sync {
+class Shopify_Pulse_Catalog_Sync {
 
 	const HASH_META     = '_wafi_term_hash';
 	const PLATFORM_META = '_wafi_platform_id';
@@ -28,14 +28,14 @@ class Wafi_Connector_Catalog_Sync {
 	/** True while applying a pulled change, so the term hooks don't echo it back. */
 	private static $suppress = false;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -54,10 +54,10 @@ class Wafi_Connector_Catalog_Sync {
 		if ( $cat_push || $brand_push ) {
 			add_action( 'created_term', array( $this, 'on_term' ), 20, 3 );
 			add_action( 'edited_term', array( $this, 'on_term' ), 20, 3 );
-			add_action( WAFI_CONNECTOR_TERM_SYNC_ACTION, array( $this, 'handle_term' ), 10, 2 );
+			add_action( SHOPIFY_PULSE_TERM_SYNC_ACTION, array( $this, 'handle_term' ), 10, 2 );
 		}
 		if ( $cat_pull || $brand_pull ) {
-			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
+			add_action( SHOPIFY_PULSE_CATALOG_PULL_CRON, array( $this, 'pull' ) );
 		}
 	}
 
@@ -90,10 +90,10 @@ class Wafi_Connector_Catalog_Sync {
 		$args = array( (int) $term_id, (string) $taxonomy );
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( WAFI_CONNECTOR_TERM_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP ) ) {
+				&& as_has_scheduled_action( SHOPIFY_PULSE_TERM_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP ) ) {
 				return;
 			}
-			as_enqueue_async_action( WAFI_CONNECTOR_TERM_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP );
+			as_enqueue_async_action( SHOPIFY_PULSE_TERM_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP );
 		} else {
 			$this->push_term( (int) $term_id, (string) $taxonomy );
 		}
@@ -120,7 +120,7 @@ class Wafi_Connector_Catalog_Sync {
 			'isActive'        => true,
 			'sourceUpdatedAt' => gmdate( 'c' ),
 		);
-		$payload = array_merge( $payload, Wafi_Connector_Seo::get_term_seo( $term_id, $taxonomy ) );
+		$payload = array_merge( $payload, Shopify_Pulse_Seo::get_term_seo( $term_id, $taxonomy ) );
 
 		if ( $is_brand ) {
 			$path = '/connect/brands';
@@ -286,7 +286,7 @@ class Wafi_Connector_Catalog_Sync {
 			}
 		}
 
-		Wafi_Connector_Seo::set_term_seo(
+		Shopify_Pulse_Seo::set_term_seo(
 			$term_id,
 			$taxonomy,
 			isset( $t['seoTitle'] ) ? $t['seoTitle'] : '',

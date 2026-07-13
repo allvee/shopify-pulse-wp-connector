@@ -14,18 +14,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Abandoned_Sync {
+class Shopify_Pulse_Abandoned_Sync {
 
 	const SWEEP_BATCH = 25;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -45,8 +45,8 @@ class Wafi_Connector_Abandoned_Sync {
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'mark_converted' ), 20 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'mark_converted_order' ), 20 );
 		// Sweep worker + instant per-cart push.
-		add_action( WAFI_CONNECTOR_ABANDONED_CRON, array( $this, 'sweep' ) );
-		add_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $this, 'handle_push' ), 10, 1 );
+		add_action( SHOPIFY_PULSE_ABANDONED_CRON, array( $this, 'sweep' ) );
+		add_action( SHOPIFY_PULSE_ABANDONED_PUSH_ACTION, array( $this, 'handle_push' ), 10, 1 );
 	}
 
 	/** Capture from the checkout AJAX review (carries email/phone early). */
@@ -89,7 +89,7 @@ class Wafi_Connector_Abandoned_Sync {
 			$subtotal = isset( $ci['line_subtotal'] ) ? (float) $ci['line_subtotal'] : 0.0;
 			$unit    = $qty > 0 ? round( $subtotal / $qty, 2 ) : $subtotal;
 			$lines[] = array(
-				'title' => $product ? $product->get_name() : __( 'Item', 'wafi-connector' ),
+				'title' => $product ? $product->get_name() : __( 'Item', 'shopify-pulse-connector' ),
 				'sku'   => ( $product && $product->get_sku() ) ? $product->get_sku() : null,
 				'qty'   => max( 1, $qty ),
 				'price' => (float) $unit,
@@ -246,10 +246,10 @@ class Wafi_Connector_Abandoned_Sync {
 			return;
 		}
 		if ( function_exists( 'as_has_scheduled_action' )
-			&& as_has_scheduled_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $session_key ), WAFI_CONNECTOR_AS_GROUP ) ) {
+			&& as_has_scheduled_action( SHOPIFY_PULSE_ABANDONED_PUSH_ACTION, array( $session_key ), SHOPIFY_PULSE_AS_GROUP ) ) {
 			return;
 		}
-		as_enqueue_async_action( WAFI_CONNECTOR_ABANDONED_PUSH_ACTION, array( $session_key ), WAFI_CONNECTOR_AS_GROUP );
+		as_enqueue_async_action( SHOPIFY_PULSE_ABANDONED_PUSH_ACTION, array( $session_key ), SHOPIFY_PULSE_AS_GROUP );
 	}
 
 	/** Action Scheduler callback: push one session's cart now. */

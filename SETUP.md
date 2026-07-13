@@ -1,9 +1,9 @@
-# Setup — connect WooCommerce to your Wafi store
+# Setup — connect WooCommerce to your Shopify Pulse store
 
-Takes ~5 minutes. You need admin access to both the Wafi platform and the
+Takes ~5 minutes. You need admin access to both the Shopify Pulse platform and the
 WooCommerce site.
 
-## 1. Register an OAuth app (on the Wafi platform)
+## 1. Register an OAuth app (on the Shopify Pulse platform)
 
 Create an app for this store with scopes **`orders.read`** and
 **`orders.write`**. You can do this from the platform admin, or via the API:
@@ -31,7 +31,7 @@ activate it. (WooCommerce must be active.)
 
 ## 3. Configure
 
-Open **Wafi Connector** in the wp-admin menu and fill in:
+Open **Shopify Pulse** in the wp-admin menu and fill in:
 
 | Field | Value |
 | --- | --- |
@@ -54,7 +54,7 @@ Then:
 
 ## Where do I find my host URLs?
 
-They're the public domains your Wafi platform is served on:
+They're the public domains your Shopify Pulse platform is served on:
 - Admin API — usually `api.admin.<yourdomain>`
 - Storefront API — usually `api.<yourdomain>`
 
@@ -63,7 +63,7 @@ URL** and leave **Storefront API base URL** blank.
 
 ## Notes
 
-- One WooCommerce site connects to **one** Wafi store (one OAuth app = one
+- One WooCommerce site connects to **one** Shopify Pulse store (one OAuth app = one
   store). Use a separate app per store.
 - The access token lasts 1 hour and is refreshed automatically — you never
   handle it.

@@ -20,18 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Fraud {
+class Shopify_Pulse_Fraud {
 
 	const SESSION_KEY = 'wafi_fraud_verdict';
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -206,7 +206,7 @@ class Wafi_Connector_Fraud {
 
 		$note = sprintf(
 			/* translators: 1: fraud layer, 2: reason */
-			__( 'Wafi fraud screen: flagged by layer "%1$s" (%2$s).', 'wafi-connector' ),
+			__( 'Wafi fraud screen: flagged by layer "%1$s" (%2$s).', 'shopify-pulse-connector' ),
 			$layer,
 			$reason
 		);
@@ -239,7 +239,7 @@ class Wafi_Connector_Fraud {
 	private function message( $verdict ) {
 		return ! empty( $verdict['message'] )
 			? $verdict['message']
-			: __( 'This order could not be accepted. Please contact support.', 'wafi-connector' );
+			: __( 'This order could not be accepted. Please contact support.', 'shopify-pulse-connector' );
 	}
 
 	/**
@@ -298,7 +298,7 @@ class Wafi_Connector_Fraud {
 		);
 		return sprintf(
 			/* translators: 1: delivery-success percentage, 2: number of past parcels */
-			__( 'We are unable to accept this order for delivery right now (courier delivery-success rate %1$s%% over %2$d past parcels). Please contact us to complete your purchase.', 'wafi-connector' ),
+			__( 'We are unable to accept this order for delivery right now (courier delivery-success rate %1$s%% over %2$d past parcels). Please contact us to complete your purchase.', 'shopify-pulse-connector' ),
 			(string) round( (float) $ratio ),
 			(int) $parcels
 		);

@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Product_Sync {
+class Shopify_Pulse_Product_Sync {
 
 	const HASH_META     = '_wafi_prod_hash';
 	const PLATFORM_META = '_wafi_platform_id';
@@ -24,14 +24,14 @@ class Wafi_Connector_Product_Sync {
 	/** True while applying a pulled change, so the product hooks don't echo it back. */
 	private static $suppress = false;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -45,10 +45,10 @@ class Wafi_Connector_Product_Sync {
 		if ( 'push' === $dir || 'both' === $dir ) {
 			add_action( 'woocommerce_new_product', array( $this, 'on_product' ), 20, 1 );
 			add_action( 'woocommerce_update_product', array( $this, 'on_product' ), 20, 1 );
-			add_action( WAFI_CONNECTOR_PRODUCT_SYNC_ACTION, array( $this, 'handle_product' ), 10, 1 );
+			add_action( SHOPIFY_PULSE_PRODUCT_SYNC_ACTION, array( $this, 'handle_product' ), 10, 1 );
 		}
 		if ( 'pull' === $dir || 'both' === $dir ) {
-			add_action( WAFI_CONNECTOR_CATALOG_PULL_CRON, array( $this, 'pull' ) );
+			add_action( SHOPIFY_PULSE_CATALOG_PULL_CRON, array( $this, 'pull' ) );
 		}
 	}
 
@@ -59,10 +59,10 @@ class Wafi_Connector_Product_Sync {
 		$product_id = (int) $product_id;
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( WAFI_CONNECTOR_PRODUCT_SYNC_ACTION, array( $product_id ), WAFI_CONNECTOR_AS_GROUP ) ) {
+				&& as_has_scheduled_action( SHOPIFY_PULSE_PRODUCT_SYNC_ACTION, array( $product_id ), SHOPIFY_PULSE_AS_GROUP ) ) {
 				return;
 			}
-			as_enqueue_async_action( WAFI_CONNECTOR_PRODUCT_SYNC_ACTION, array( $product_id ), WAFI_CONNECTOR_AS_GROUP );
+			as_enqueue_async_action( SHOPIFY_PULSE_PRODUCT_SYNC_ACTION, array( $product_id ), SHOPIFY_PULSE_AS_GROUP );
 		} else {
 			$this->push_product( $product_id );
 		}
@@ -104,7 +104,7 @@ class Wafi_Connector_Product_Sync {
 		if ( ! empty( $options ) ) {
 			$payload['options'] = $options;
 		}
-		$payload = array_merge( $payload, Wafi_Connector_Seo::get_post_seo( $product_id ) );
+		$payload = array_merge( $payload, Shopify_Pulse_Seo::get_post_seo( $product_id ) );
 
 		$images = $this->images( $product );
 		if ( ! empty( $images ) ) {
@@ -387,7 +387,7 @@ class Wafi_Connector_Product_Sync {
 	}
 
 	private function stamp_product( $wc_id, $platform_id, $platform_updated, $p ) {
-		Wafi_Connector_Seo::set_post_seo(
+		Shopify_Pulse_Seo::set_post_seo(
 			$wc_id,
 			isset( $p['seoTitle'] ) ? $p['seoTitle'] : '',
 			isset( $p['seoDescription'] ) ? $p['seoDescription'] : ''
