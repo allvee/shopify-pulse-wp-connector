@@ -8,7 +8,7 @@
  * description, image, SEO (Yoast/Rank Math/AIOSEO) and — for categories — the
  * parent's external id for hierarchy. Hash-gated so nothing re-sends unchanged.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,8 +17,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Catalog_Sync {
 
-	const HASH_META     = '_wafi_term_hash';
-	const PLATFORM_META = '_wafi_platform_id';
+	const HASH_META     = '_sp_term_hash';
+	const PLATFORM_META = '_sp_platform_id';
 
 	/** WooCommerce category taxonomy. */
 	private static $cat_tax = array( 'product_cat' );
@@ -204,7 +204,7 @@ class Shopify_Pulse_Catalog_Sync {
 		if ( ! taxonomy_exists( $taxonomy ) ) {
 			return;
 		}
-		$opt    = 'wafi_cat_pull_' . $cursor_key;
+		$opt    = 'sp_cat_pull_' . $cursor_key;
 		$cursor = get_option( $opt, '' );
 		$res    = $this->api->get( $path . '?limit=100' . ( $cursor ? '&updatedSince=' . rawurlencode( $cursor ) : '' ) );
 		if ( is_wp_error( $res ) ) {
@@ -252,7 +252,7 @@ class Shopify_Pulse_Catalog_Sync {
 
 		// Last-write-wins: skip anything we've already applied or older.
 		if ( $term_id ) {
-			$last = get_term_meta( $term_id, '_wafi_term_platform_updated', true );
+			$last = get_term_meta( $term_id, '_sp_term_platform_updated', true );
 			if ( $last && $platform_updated && $platform_updated <= $last ) {
 				return;
 			}
@@ -293,7 +293,7 @@ class Shopify_Pulse_Catalog_Sync {
 			isset( $t['seoDescription'] ) ? $t['seoDescription'] : ''
 		);
 		update_term_meta( $term_id, self::PLATFORM_META, $platform_id );
-		update_term_meta( $term_id, '_wafi_term_platform_updated', $platform_updated );
+		update_term_meta( $term_id, '_sp_term_platform_updated', $platform_updated );
 		self::$suppress = false;
 		$this->logger->debug( 'Pulled term ' . $taxonomy . '#' . $term_id . ' from platform.' );
 	}

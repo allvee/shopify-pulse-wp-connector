@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,6 +54,11 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.2.0 =
+* Full internal rename to Shopify Pulse (code prefixes, slug, asset + cookie
+  names). One-time data migration re-keys existing synced-order meta and
+  renames the capture table, so no synced data is lost.
 
 = 1.1.0 =
 * Redesigned settings dashboard with live analytics KPIs.

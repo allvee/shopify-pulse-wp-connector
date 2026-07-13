@@ -7,7 +7,7 @@
  * carts idle beyond the threshold to POST /connect/abandoned (free-text lines,
  * OAuth-guarded). Converted carts are dropped on checkout.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -33,7 +33,7 @@ class Shopify_Pulse_Abandoned_Sync {
 
 	public static function table_name() {
 		global $wpdb;
-		return $wpdb->prefix . 'wafi_abandoned_carts';
+		return $wpdb->prefix . 'sp_abandoned_carts';
 	}
 
 	public function register() {

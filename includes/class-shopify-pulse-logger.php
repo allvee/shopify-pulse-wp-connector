@@ -3,7 +3,7 @@
  * Thin wrapper over WC_Logger so all connector output lands in one source
  * ("shopify-pulse-connector") under WooCommerce › Status › Logs.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

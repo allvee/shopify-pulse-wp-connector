@@ -26,7 +26,7 @@ Copy three things:
 
 ## 2. Install the plugin (on WooCommerce)
 
-Upload `wafi-connector.zip` under *Plugins → Add New → Upload Plugin* and
+Upload `sp-connector.zip` under *Plugins → Add New → Upload Plugin* and
 activate it. (WooCommerce must be active.)
 
 ## 3. Configure
@@ -69,7 +69,7 @@ URL** and leave **Storefront API base URL** blank.
   handle it.
 - Fraud screening **fails open**: if the platform is unreachable, checkout
   proceeds so sales aren't blocked.
-- Logs: *WooCommerce → Status → Logs*, source `wafi-connector` (enable
+- Logs: *WooCommerce → Status → Logs*, source `sp-connector` (enable
   **Debug logging** in settings for verbose output).
 
 See [README.md](./README.md) for the full architecture and endpoint reference.

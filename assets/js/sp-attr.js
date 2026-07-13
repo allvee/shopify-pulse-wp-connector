@@ -1,5 +1,5 @@
 /**
- * Wafi Connector — visitor attribution tracker.
+ * Shopify Pulse Connector — visitor attribution tracker.
  *
  * Persists FIRST-touch and LAST-touch attribution in cookies (landing page,
  * referrer, traffic source, utm_*), a visit counter, device/language, and a
@@ -73,19 +73,19 @@
 	};
 
 	// First touch: write once, keep forever (within DAYS).
-	if ( ! getCookie( 'wafi_first' ) ) {
-		setCookie( 'wafi_first', JSON.stringify( touch ), DAYS );
+	if ( ! getCookie( 'sp_first' ) ) {
+		setCookie( 'sp_first', JSON.stringify( touch ), DAYS );
 	}
 
 	// Last touch: refresh whenever this landing carries campaign info, an
 	// external referrer, or there is no last touch yet.
-	if ( utm.utm_source || ( ref && trafficSource( ref ) !== 'internal' ) || ! getCookie( 'wafi_last' ) ) {
-		setCookie( 'wafi_last', JSON.stringify( touch ), DAYS );
+	if ( utm.utm_source || ( ref && trafficSource( ref ) !== 'internal' ) || ! getCookie( 'sp_last' ) ) {
+		setCookie( 'sp_last', JSON.stringify( touch ), DAYS );
 	}
 
 	// Visit counter.
-	var vc = parseInt( getCookie( 'wafi_vc' ) || '0', 10 ) + 1;
-	setCookie( 'wafi_vc', String( vc ), DAYS );
+	var vc = parseInt( getCookie( 'sp_vc' ) || '0', 10 ) + 1;
+	setCookie( 'sp_vc', String( vc ), DAYS );
 
 	// Client-local browser time snapshot (captured every page; the order picks
 	// up the most recent one).
@@ -99,9 +99,9 @@
 		tz_offset_min: now.getTimezoneOffset()
 	};
 	try { bt.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch ( e ) {}
-	setCookie( 'wafi_bt', JSON.stringify( bt ), 1 );
+	setCookie( 'sp_bt', JSON.stringify( bt ), 1 );
 
 	// Device + language (cheap signals).
-	setCookie( 'wafi_dev', /Mobi|Android|iPhone|iPad|Windows Phone/i.test( navigator.userAgent ) ? 'mobile' : 'desktop', DAYS );
-	setCookie( 'wafi_lang', ( navigator.language || '' ).slice( 0, 16 ), DAYS );
+	setCookie( 'sp_dev', /Mobi|Android|iPhone|iPad|Windows Phone/i.test( navigator.userAgent ) ? 'mobile' : 'desktop', DAYS );
+	setCookie( 'sp_lang', ( navigator.language || '' ).slice( 0, 16 ), DAYS );
 } )();

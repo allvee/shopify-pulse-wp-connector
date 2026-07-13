@@ -1,14 +1,14 @@
 <?php
 /**
- * Visitor attribution: loads the front-end tracker (assets/js/wafi-attr.js),
+ * Visitor attribution: loads the front-end tracker (assets/js/sp-attr.js),
  * then snapshots its cookies onto the order when checkout completes, so a rich
  * first-touch / last-touch / browser-time blob rides along to the platform.
  *
- * The blob is stored on the order as `_wafi_attribution` (JSON) and read by the
+ * The blob is stored on the order as `_sp_attribution` (JSON) and read by the
  * order mapper. WooCommerce's own `_wc_order_attribution_*` meta is used as a
  * fallback when the JS cookies are absent.
  *
- * @package WafiConnector
+ * @package ShopifyPulse
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Shopify_Pulse_Attribution {
 
-	const META = '_wafi_attribution';
+	const META = '_sp_attribution';
 
 	/** @var Shopify_Pulse_Settings */
 	private $settings;
@@ -38,8 +38,8 @@ class Shopify_Pulse_Attribution {
 		}
 		// Header (not footer) so first-touch is recorded on the very first load.
 		wp_enqueue_script(
-			'wafi-attr',
-			SHOPIFY_PULSE_URL . 'assets/js/wafi-attr.js',
+			'sp-attr',
+			SHOPIFY_PULSE_URL . 'assets/js/sp-attr.js',
 			array(),
 			SHOPIFY_PULSE_VERSION,
 			false
@@ -67,12 +67,12 @@ class Shopify_Pulse_Attribution {
 	/** Assemble the rich attribution blob from the tracker cookies + server. */
 	public function build_blob() {
 		$blob = array(
-			'first_touch'  => $this->cookie_json( 'wafi_first' ),
-			'last_touch'   => $this->cookie_json( 'wafi_last' ),
-			'browser_time' => $this->cookie_json( 'wafi_bt' ),
-			'visit_count'  => isset( $_COOKIE['wafi_vc'] ) ? absint( $_COOKIE['wafi_vc'] ) : 0,
-			'device'       => isset( $_COOKIE['wafi_dev'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['wafi_dev'] ) ) : '',
-			'language'     => isset( $_COOKIE['wafi_lang'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['wafi_lang'] ) ) : '',
+			'first_touch'  => $this->cookie_json( 'sp_first' ),
+			'last_touch'   => $this->cookie_json( 'sp_last' ),
+			'browser_time' => $this->cookie_json( 'sp_bt' ),
+			'visit_count'  => isset( $_COOKIE['sp_vc'] ) ? absint( $_COOKIE['sp_vc'] ) : 0,
+			'device'       => isset( $_COOKIE['sp_dev'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['sp_dev'] ) ) : '',
+			'language'     => isset( $_COOKIE['sp_lang'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['sp_lang'] ) ) : '',
 			'ip'           => $this->client_ip(),
 			'user_agent'   => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 512 ) : '',
 			'captured_at'  => current_time( 'c' ),
