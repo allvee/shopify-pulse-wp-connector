@@ -39,10 +39,20 @@ class Shopify_Pulse_Orders_Column {
 		add_action( 'wp_ajax_shopify_pulse_order_sync', array( $this, 'ajax_sync_order' ) );
 	}
 
-	/** Append the column. */
+	/** Insert the column right after the order Status column (fallback: append). */
 	public function add_column( $columns ) {
-		$columns[ self::COL ] = __( 'Shopify Pulse', 'shopify-pulse-connector' );
-		return $columns;
+		$label = __( 'Shopify Pulse', 'shopify-pulse-connector' );
+		$out   = array();
+		foreach ( $columns as $key => $value ) {
+			$out[ $key ] = $value;
+			if ( 'order_status' === $key ) {
+				$out[ self::COL ] = $label;
+			}
+		}
+		if ( ! isset( $out[ self::COL ] ) ) {
+			$out[ self::COL ] = $label;
+		}
+		return $out;
 	}
 
 	/** Legacy screen passes ($column, $post_id). */
