@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="72" viewBox="0 0 340 72" fill="none">
+
+  <g transform="translate(4,4)">
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#6A8C8C" stroke-width="2.5"></circle>
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#5FE3C0" stroke-width="2.5" stroke-dasharray="82 200" stroke-linecap="round" transform="rotate(-90 32 32)"></circle>
+  <path d="M14 34h8l4-9 6 17 5-12 3 4h10" fill="none" stroke="#5FE3C0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path></g>
+  <text x="86" y="38" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="500" letter-spacing="-0.5" fill="#E9E9ED">Shopify <tspan fill="#5FE3C0">Pulse</tspan></text>
+  <text x="87" y="56" font-family="Inter, Arial, sans-serif" font-size="9" letter-spacing="2.2" fill="#6A8C8C">AI COMMERCE INTELLIGENCE</text>
+</svg>

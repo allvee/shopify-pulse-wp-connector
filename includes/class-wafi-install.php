@@ -32,6 +32,23 @@ class Wafi_Connector_Install {
 	public static function activate() {
 		self::create_table();
 		self::schedule_crons();
+		update_option( 'wafi_connector_version', WAFI_CONNECTOR_VERSION, false );
+	}
+
+	/**
+	 * Self-heal on update-in-place. WordPress does NOT fire the activation hook
+	 * when a plugin is updated by replacing its files, so re-run the idempotent
+	 * setup (dbDelta table + cron scheduling) whenever the stored version differs
+	 * from the running one. Cheap: after the first post-update request stores the
+	 * new version, this is a single get_option no-op.
+	 */
+	public static function maybe_upgrade() {
+		if ( WAFI_CONNECTOR_VERSION === get_option( 'wafi_connector_version' ) ) {
+			return;
+		}
+		self::create_table();
+		self::schedule_crons();
+		update_option( 'wafi_connector_version', WAFI_CONNECTOR_VERSION, false );
 	}
 
 	public static function deactivate() {
