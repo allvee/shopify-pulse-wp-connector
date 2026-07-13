@@ -107,4 +107,19 @@ class Shopify_Pulse_Plugin {
 	public function order_sync() {
 		return $this->order_sync;
 	}
+
+	/** @return Shopify_Pulse_Product_Sync */
+	public function product_sync() {
+		return $this->product_sync;
+	}
+
+	/** @return Shopify_Pulse_Customer_Sync */
+	public function customer_sync() {
+		return $this->customer_sync;
+	}
+
+	/** @return Shopify_Pulse_Catalog_Sync */
+	public function catalog_sync() {
+		return $this->catalog_sync;
+	}
 }
