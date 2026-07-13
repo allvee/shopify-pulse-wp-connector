@@ -72,6 +72,12 @@ class Test_Migrate_Legacy extends WP_UnitTestCase {
 
 	public function test_renames_capture_table_preserving_rows() {
 		global $wpdb;
+		// WP_UnitTestCase rewrites CREATE TABLE -> CREATE TEMPORARY TABLE (a
+		// `query` filter), which SHOW TABLES / RENAME TABLE can't see. Drop those
+		// filters so this test exercises a real table like production.
+		remove_filter( 'query', array( $this, '_create_temporary_tables' ) );
+		remove_filter( 'query', array( $this, '_drop_temporary_tables' ) );
+
 		$old = $wpdb->prefix . 'wafi_abandoned_carts';
 		$new = $wpdb->prefix . 'sp_abandoned_carts';
 		$wpdb->query( "DROP TABLE IF EXISTS `$new`" ); // phpcs:ignore
