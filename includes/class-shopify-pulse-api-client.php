@@ -17,17 +17,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Api_Client {
+class Shopify_Pulse_Api_Client {
 
 	const TIMEOUT = 20;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
 
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->logger   = $logger;
 	}
@@ -55,13 +55,13 @@ class Wafi_Connector_Api_Client {
 	 */
 	public function get_token( $force = false ) {
 		if ( ! $force ) {
-			$cached = get_transient( WAFI_CONNECTOR_TOKEN_TRANSIENT );
+			$cached = get_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT );
 			if ( is_string( $cached ) && '' !== $cached ) {
 				return $cached;
 			}
 		}
 		if ( ! $this->settings->is_configured() ) {
-			return new WP_Error( 'wafi_not_configured', __( 'Connector is not configured (API base, SID, client id/secret required).', 'wafi-connector' ) );
+			return new WP_Error( 'wafi_not_configured', __( 'Connector is not configured (API base, SID, client id/secret required).', 'shopify-pulse-connector' ) );
 		}
 
 		$response = wp_remote_post(
@@ -99,7 +99,7 @@ class Wafi_Connector_Api_Client {
 		$token   = (string) $body['access_token'];
 		$expires = isset( $body['expires_in'] ) ? (int) $body['expires_in'] : 3600;
 		// Refresh a minute early so an in-flight request never races expiry.
-		set_transient( WAFI_CONNECTOR_TOKEN_TRANSIENT, $token, max( 60, $expires - 60 ) );
+		set_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT, $token, max( 60, $expires - 60 ) );
 		$this->logger->debug( 'Minted access token (expires_in=' . $expires . ')' );
 		return $token;
 	}
@@ -118,7 +118,7 @@ class Wafi_Connector_Api_Client {
 	 */
 	private function send( $base, $method, $path, $body, $auth, $retry = true ) {
 		if ( '' === $this->settings->get_sid() ) {
-			return new WP_Error( 'wafi_not_configured', __( 'Missing Store SID.', 'wafi-connector' ) );
+			return new WP_Error( 'wafi_not_configured', __( 'Missing Store SID.', 'shopify-pulse-connector' ) );
 		}
 		$headers = array(
 			'Content-Type' => 'application/json',
@@ -151,7 +151,7 @@ class Wafi_Connector_Api_Client {
 
 		if ( 401 === $code && $auth && $retry ) {
 			// Token expired or app re-enabled — mint fresh and retry once.
-			delete_transient( WAFI_CONNECTOR_TOKEN_TRANSIENT );
+			delete_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT );
 			$this->get_token( true );
 			return $this->send( $base, $method, $path, $body, $auth, false );
 		}

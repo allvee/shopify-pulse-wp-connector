@@ -15,14 +15,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Attribution {
+class Shopify_Pulse_Attribution {
 
 	const META = '_wafi_attribution';
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
 
-	public function __construct( Wafi_Connector_Settings $settings ) {
+	public function __construct( Shopify_Pulse_Settings $settings ) {
 		$this->settings = $settings;
 	}
 
@@ -39,9 +39,9 @@ class Wafi_Connector_Attribution {
 		// Header (not footer) so first-touch is recorded on the very first load.
 		wp_enqueue_script(
 			'wafi-attr',
-			WAFI_CONNECTOR_URL . 'assets/js/wafi-attr.js',
+			SHOPIFY_PULSE_URL . 'assets/js/wafi-attr.js',
 			array(),
-			WAFI_CONNECTOR_VERSION,
+			SHOPIFY_PULSE_VERSION,
 			false
 		);
 	}

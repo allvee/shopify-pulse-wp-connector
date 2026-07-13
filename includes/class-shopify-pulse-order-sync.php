@@ -11,18 +11,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Order_Sync {
+class Shopify_Pulse_Order_Sync {
 
 	const MAX_ATTEMPTS = 5;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -31,7 +31,7 @@ class Wafi_Connector_Order_Sync {
 	public function register() {
 		add_action( 'woocommerce_new_order', array( $this, 'on_new_order' ), 20, 1 );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'on_status_changed' ), 20, 4 );
-		add_action( WAFI_CONNECTOR_SYNC_ACTION, array( $this, 'handle_job' ), 10, 2 );
+		add_action( SHOPIFY_PULSE_SYNC_ACTION, array( $this, 'handle_job' ), 10, 2 );
 	}
 
 	public function on_new_order( $order_id ) {
@@ -50,7 +50,7 @@ class Wafi_Connector_Order_Sync {
 			return;
 		}
 		// Don't echo back a change the platform just wrote to us.
-		if ( Wafi_Connector_Status_Poller::is_writing_back() ) {
+		if ( Shopify_Pulse_Status_Poller::is_writing_back() ) {
 			return;
 		}
 		$order = wc_get_order( $order_id );
@@ -65,10 +65,10 @@ class Wafi_Connector_Order_Sync {
 		$args = array( $order_id, $is_backfill ? 1 : 0 );
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( WAFI_CONNECTOR_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP ) ) {
+				&& as_has_scheduled_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP ) ) {
 				return; // already queued
 			}
-			as_enqueue_async_action( WAFI_CONNECTOR_SYNC_ACTION, $args, WAFI_CONNECTOR_AS_GROUP );
+			as_enqueue_async_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP );
 		} else {
 			$this->push_order( $order_id, (bool) $is_backfill );
 		}
@@ -124,9 +124,9 @@ class Wafi_Connector_Order_Sync {
 			return;
 		}
 
-		$payload = Wafi_Connector_Order_Mapper::map( $order, (bool) $is_backfill );
+		$payload = Shopify_Pulse_Order_Mapper::map( $order, (bool) $is_backfill );
 		$hash    = md5( (string) wp_json_encode( $payload ) );
-		if ( $order->get_meta( WAFI_CONNECTOR_META_HASH ) === $hash ) {
+		if ( $order->get_meta( SHOPIFY_PULSE_META_HASH ) === $hash ) {
 			$this->logger->debug( 'Order ' . $order_id . ' unchanged since last sync — skipping.' );
 			return;
 		}
@@ -137,12 +137,12 @@ class Wafi_Connector_Order_Sync {
 			return;
 		}
 
-		$order->update_meta_data( WAFI_CONNECTOR_META_HASH, $hash );
+		$order->update_meta_data( SHOPIFY_PULSE_META_HASH, $hash );
 		if ( ! empty( $res['id'] ) ) {
-			$order->update_meta_data( WAFI_CONNECTOR_META_ID, (string) $res['id'] );
+			$order->update_meta_data( SHOPIFY_PULSE_META_ID, (string) $res['id'] );
 		}
-		$order->update_meta_data( WAFI_CONNECTOR_META_SYNCED_AT, current_time( 'mysql' ) );
-		$order->delete_meta_data( WAFI_CONNECTOR_META_ATTEMPTS );
+		$order->update_meta_data( SHOPIFY_PULSE_META_SYNCED_AT, current_time( 'mysql' ) );
+		$order->delete_meta_data( SHOPIFY_PULSE_META_ATTEMPTS );
 		$order->save();
 
 		$this->logger->debug(
@@ -152,8 +152,8 @@ class Wafi_Connector_Order_Sync {
 	}
 
 	private function handle_failure( WC_Order $order, WP_Error $err, $is_backfill = false ) {
-		$attempts = (int) $order->get_meta( WAFI_CONNECTOR_META_ATTEMPTS ) + 1;
-		$order->update_meta_data( WAFI_CONNECTOR_META_ATTEMPTS, $attempts );
+		$attempts = (int) $order->get_meta( SHOPIFY_PULSE_META_ATTEMPTS ) + 1;
+		$order->update_meta_data( SHOPIFY_PULSE_META_ATTEMPTS, $attempts );
 		$order->save();
 
 		$this->logger->error(
@@ -164,9 +164,9 @@ class Wafi_Connector_Order_Sync {
 			$delay = min( 3600, 60 * (int) pow( 2, $attempts ) ); // 2,4,8,16 min, capped 1h
 			as_schedule_single_action(
 				time() + $delay,
-				WAFI_CONNECTOR_SYNC_ACTION,
+				SHOPIFY_PULSE_SYNC_ACTION,
 				array( $order->get_id(), $is_backfill ? 1 : 0 ), // preserve backfill flag on retry
-				WAFI_CONNECTOR_AS_GROUP
+				SHOPIFY_PULSE_AS_GROUP
 			);
 		}
 	}

@@ -18,9 +18,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Wafi_Connector_Customer_Sync {
+class Shopify_Pulse_Customer_Sync {
 
-	const CURSOR_OPTION        = 'wafi_connector_customer_cursor';
+	const CURSOR_OPTION        = 'shopify_pulse_customer_cursor';
 	const META_PLATFORM_ID     = '_wafi_platform_customer_id';
 	const META_HASH            = '_wafi_cust_hash';
 	const META_PLATFORM_UPDATED = '_wafi_cust_platform_updated';
@@ -28,14 +28,14 @@ class Wafi_Connector_Customer_Sync {
 	/** True while applying a platform change, so the WP user hooks don't echo it back. */
 	private static $suppress = false;
 
-	/** @var Wafi_Connector_Settings */
+	/** @var Shopify_Pulse_Settings */
 	private $settings;
-	/** @var Wafi_Connector_Api_Client */
+	/** @var Shopify_Pulse_Api_Client */
 	private $api;
-	/** @var Wafi_Connector_Logger */
+	/** @var Shopify_Pulse_Logger */
 	private $logger;
 
-	public function __construct( Wafi_Connector_Settings $settings, Wafi_Connector_Api_Client $api, Wafi_Connector_Logger $logger ) {
+	public function __construct( Shopify_Pulse_Settings $settings, Shopify_Pulse_Api_Client $api, Shopify_Pulse_Logger $logger ) {
 		$this->settings = $settings;
 		$this->api      = $api;
 		$this->logger   = $logger;
@@ -52,10 +52,10 @@ class Wafi_Connector_Customer_Sync {
 			add_action( 'profile_update', array( $this, 'on_change' ), 20, 1 );
 			add_action( 'woocommerce_created_customer', array( $this, 'on_change' ), 20, 1 );
 			add_action( 'woocommerce_save_account_details', array( $this, 'on_change' ), 20, 1 );
-			add_action( WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION, array( $this, 'handle_push' ), 10, 1 );
+			add_action( SHOPIFY_PULSE_CUSTOMER_SYNC_ACTION, array( $this, 'handle_push' ), 10, 1 );
 		}
 		if ( 'pull' === $dir || 'both' === $dir ) {
-			add_action( WAFI_CONNECTOR_CUSTOMER_PULL_CRON, array( $this, 'pull' ) );
+			add_action( SHOPIFY_PULSE_CUSTOMER_PULL_CRON, array( $this, 'pull' ) );
 		}
 	}
 
@@ -66,10 +66,10 @@ class Wafi_Connector_Customer_Sync {
 		$user_id = (int) $user_id;
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
 			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION, array( $user_id ), WAFI_CONNECTOR_AS_GROUP ) ) {
+				&& as_has_scheduled_action( SHOPIFY_PULSE_CUSTOMER_SYNC_ACTION, array( $user_id ), SHOPIFY_PULSE_AS_GROUP ) ) {
 				return;
 			}
-			as_enqueue_async_action( WAFI_CONNECTOR_CUSTOMER_SYNC_ACTION, array( $user_id ), WAFI_CONNECTOR_AS_GROUP );
+			as_enqueue_async_action( SHOPIFY_PULSE_CUSTOMER_SYNC_ACTION, array( $user_id ), SHOPIFY_PULSE_AS_GROUP );
 		} else {
 			$this->push_user( $user_id );
 		}
