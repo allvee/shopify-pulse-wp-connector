@@ -3,7 +3,7 @@
  * Plugin Name:       Shopify Pulse Connector
  * Plugin URI:        https://github.com/allvee/shopify-pulse-wp-connector
  * Description:        Mirrors WooCommerce orders, incomplete/abandoned carts and analytics into the Shopify Pulse platform so a store can be managed from there. Connects any WooCommerce site to one Shopify Pulse store via OAuth.
- * Version:           1.2.3
+ * Version:           1.2.4
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Shopify Pulse
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'SHOPIFY_PULSE_VERSION', '1.2.3' );
+define( 'SHOPIFY_PULSE_VERSION', '1.2.4' );
 define( 'SHOPIFY_PULSE_FILE', __FILE__ );
 define( 'SHOPIFY_PULSE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SHOPIFY_PULSE_URL', plugin_dir_url( __FILE__ ) );
@@ -63,6 +63,7 @@ require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-product-sync.php'
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-seo-sync.php';
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-status-poller.php';
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-orders-column.php';
+require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-products-column.php';
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-install.php';
 require_once SHOPIFY_PULSE_DIR . 'includes/class-shopify-pulse-plugin.php';
 

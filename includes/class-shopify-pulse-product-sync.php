@@ -112,13 +112,78 @@ class Shopify_Pulse_Product_Sync {
 		if ( ! $product ) {
 			return;
 		}
+		$payload = $this->build_payload( $product );
+		if ( null === $payload ) {
+			return; // nothing to sync
+		}
 
+		$hash = md5( (string) wp_json_encode( $payload ) );
+		if ( get_post_meta( $product_id, self::HASH_META, true ) === $hash ) {
+			return;
+		}
+		$res = $this->api->post( '/connect/products', $payload );
+		if ( is_wp_error( $res ) ) {
+			$this->logger->error( 'Product ' . $product_id . ' push failed: ' . $res->get_error_message() );
+			return;
+		}
+		update_post_meta( $product_id, self::HASH_META, $hash );
+		if ( ! empty( $res['id'] ) ) {
+			update_post_meta( $product_id, self::PLATFORM_META, (int) $res['id'] );
+		}
+		$this->logger->debug( 'Product ' . $product_id . ' synced (platform id ' . ( isset( $res['id'] ) ? $res['id'] : '?' ) . ').' );
+	}
+
+	/**
+	 * Force-sync ONE product now (the per-product Sync button). Ignores the
+	 * unchanged-hash skip — the operator explicitly asked for this product —
+	 * stamps the platform id, and returns a result the caller can render.
+	 *
+	 * @param int $product_id
+	 * @return array{ok:bool,id?:string,message:string}
+	 */
+	public function sync_one( $product_id ) {
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return array( 'ok' => false, 'message' => __( 'WooCommerce not available.', 'shopify-pulse-connector' ) );
+		}
+		$product = wc_get_product( $product_id );
+		if ( ! $product ) {
+			return array( 'ok' => false, 'message' => __( 'Product not found.', 'shopify-pulse-connector' ) );
+		}
+		$payload = $this->build_payload( $product );
+		if ( null === $payload ) {
+			return array( 'ok' => false, 'message' => __( 'Nothing to sync on this product.', 'shopify-pulse-connector' ) );
+		}
+		$res = $this->api->post( '/connect/products', $payload );
+		if ( is_wp_error( $res ) ) {
+			$this->logger->error( 'Product ' . $product_id . ' manual sync failed: ' . $res->get_error_message() );
+			return array( 'ok' => false, 'message' => $res->get_error_message() );
+		}
+		update_post_meta( $product_id, self::HASH_META, md5( (string) wp_json_encode( $payload ) ) );
+		if ( ! empty( $res['id'] ) ) {
+			update_post_meta( $product_id, self::PLATFORM_META, (int) $res['id'] );
+		}
+		return array(
+			'ok'      => true,
+			'id'      => isset( $res['id'] ) ? (string) $res['id'] : '',
+			'message' => __( 'Synced.', 'shopify-pulse-connector' ),
+		);
+	}
+
+	/**
+	 * Build the /connect/products payload for a product, or null when there's
+	 * nothing to sync (no variants). Shared by push_product() + sync_one().
+	 *
+	 * @param WC_Product $product
+	 * @return array|null
+	 */
+	private function build_payload( $product ) {
+		$product_id = $product->get_id();
 		list( $options, $variants ) = $product->is_type( 'variable' )
 			? $this->variable( $product )
 			: array( array(), array( $this->simple_variant( $product ) ) );
 
 		if ( empty( $variants ) ) {
-			return; // nothing to sync
+			return null;
 		}
 
 		$payload = array(
@@ -151,22 +216,7 @@ class Shopify_Pulse_Product_Sync {
 			$payload['brandExternalId'] = (string) $brand;
 		}
 
-		$payload = $this->prune( $payload );
-
-		$hash = md5( (string) wp_json_encode( $payload ) );
-		if ( get_post_meta( $product_id, self::HASH_META, true ) === $hash ) {
-			return;
-		}
-		$res = $this->api->post( '/connect/products', $payload );
-		if ( is_wp_error( $res ) ) {
-			$this->logger->error( 'Product ' . $product_id . ' push failed: ' . $res->get_error_message() );
-			return;
-		}
-		update_post_meta( $product_id, self::HASH_META, $hash );
-		if ( ! empty( $res['id'] ) ) {
-			update_post_meta( $product_id, self::PLATFORM_META, (int) $res['id'] );
-		}
-		$this->logger->debug( 'Product ' . $product_id . ' synced (platform id ' . ( isset( $res['id'] ) ? $res['id'] : '?' ) . ').' );
+		return $this->prune( $payload );
 	}
 
 	private function simple_variant( $product ) {
