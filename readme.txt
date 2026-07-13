@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.2.2
+Stable tag: 1.2.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,6 +54,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.2.3 =
+* Orders list: the Shopify Pulse column now sits right after the Status column.
 
 = 1.2.2 =
 * Orders list: a Shopify Pulse column showing Synced, or a per-order Sync
