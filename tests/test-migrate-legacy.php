@@ -78,6 +78,9 @@ class Test_Migrate_Legacy extends WP_UnitTestCase {
 		$wpdb->query( "DROP TABLE IF EXISTS `$old`" ); // phpcs:ignore
 		$wpdb->query( "CREATE TABLE `$old` (session_key varchar(64) NOT NULL, email varchar(191), PRIMARY KEY (session_key))" ); // phpcs:ignore
 		$wpdb->query( "INSERT INTO `$old` (session_key, email) VALUES ('k1', 'a@b.com')" ); // phpcs:ignore
+		// Persist the seed row before migrate's RENAME (DDL) implicit-commits —
+		// otherwise the INSERT is still inside WP_UnitTestCase's open transaction.
+		$wpdb->query( 'COMMIT' ); // phpcs:ignore
 
 		$this->run_migrate();
 
