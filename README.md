@@ -115,6 +115,28 @@ brands.write     categories.write     collections.write
 
 For a step-by-step walkthrough, see `SETUP.md` in this repo or the **Quick setup guide** panel on the plugin's settings page.
 
+### Building the installable zip
+
+The zip is a build artefact (git-ignored), never committed. To package the
+current version for upload:
+
+```bash
+bin/build-zip.sh          # or: composer build
+```
+
+It reads the version from the plugin header in `shopify-pulse-connector.php`
+and writes `dist/shopify-pulse-connector-<version>.zip` with the single
+top-level folder WordPress expects. **Bump the `Version:` header (and
+`SHOPIFY_PULSE_VERSION`) — that's the only per-release edit;** the script always
+packages the latest.
+
+**Automated releases:** pushing a version tag builds the zip and attaches it to
+a GitHub Release (see `.github/workflows/release.yml`):
+
+```bash
+git tag v1.2.5 && git push origin v1.2.5
+```
+
 ## Configuration
 
 All settings live in the `sp_connector_settings` option.

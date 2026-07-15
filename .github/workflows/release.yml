@@ -1,0 +1,31 @@
+name: Release plugin zip
+
+# Push a version tag (e.g. `git tag v1.2.5 && git push origin v1.2.5`) and this
+# builds the installable plugin zip and attaches it to a GitHub Release, so the
+# latest version is always downloadable as a zip.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & attach zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin zip
+        run: bash bin/build-zip.sh
+
+      - name: Create release with zip asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.zip \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

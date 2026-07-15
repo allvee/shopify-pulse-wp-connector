@@ -12,7 +12,8 @@
     "wp-phpunit/wp-phpunit": "^6.4"
   },
   "scripts": {
-    "test": "phpunit"
+    "test": "phpunit",
+    "build": "bin/build-zip.sh"
   },
   "config": {
     "allow-plugins": {
