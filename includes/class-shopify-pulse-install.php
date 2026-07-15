@@ -33,6 +33,9 @@ class Shopify_Pulse_Install {
 		self::migrate_legacy();
 		self::create_table();
 		self::schedule_crons();
+		// Drop any cached access token so the next request re-mints with the
+		// current scope logic (an old token may carry a stale narrow scope).
+		delete_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT );
 		update_option( 'shopify_pulse_version', SHOPIFY_PULSE_VERSION, false );
 	}
 
@@ -111,6 +114,9 @@ class Shopify_Pulse_Install {
 		self::migrate_legacy();
 		self::create_table();
 		self::schedule_crons();
+		// Drop any cached access token so the next request re-mints with the
+		// current scope logic (an old token may carry a stale narrow scope).
+		delete_transient( SHOPIFY_PULSE_TOKEN_TRANSIENT );
 		update_option( 'shopify_pulse_version', SHOPIFY_PULSE_VERSION, false );
 	}
 

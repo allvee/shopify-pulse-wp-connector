@@ -74,11 +74,18 @@ class Shopify_Pulse_Api_Client {
 					'X-Store-Sid'  => $this->settings->get_sid(),
 				),
 				'body'    => wp_json_encode(
+					// No `scope`: client_credentials with scope omitted grants
+					// this app's *full registered* scope set. Narrowing here (the
+					// old hardcoded `orders.read orders.write`) silently stripped
+					// every other permission from the token, so product/catalog/
+					// customer sync 403'd with "You don't have permission to do
+					// that" even though the app was registered for them. The
+					// registered set — chosen by the operator at registration — is
+					// the least-privilege boundary; the token honours it verbatim.
 					array(
 						'grant_type'    => 'client_credentials',
 						'client_id'     => $this->settings->get( 'client_id' ),
 						'client_secret' => $this->settings->get( 'client_secret' ),
-						'scope'         => 'orders.read orders.write',
 					)
 				),
 			)

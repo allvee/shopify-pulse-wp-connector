@@ -5,8 +5,12 @@ WooCommerce site.
 
 ## 1. Register an OAuth app (on the Shopify Pulse platform)
 
-Create an app for this store with scopes **`orders.read`** and
-**`orders.write`**. You can do this from the platform admin, or via the API:
+Grant the app the scopes for every feature you plan to enable — the plugin's
+token carries exactly the app's registered scopes, so a missing scope makes
+that feature 403 ("You don't have permission to do that"). Register the full
+set below (harmless if a feature stays off); orders-only is not enough once you
+turn on product/customer/catalog sync. You can do this from the platform admin,
+or via the API:
 
 ```bash
 curl -X POST https://<your-admin-host>/api/v1/apps \
@@ -15,7 +19,10 @@ curl -X POST https://<your-admin-host>/api/v1/apps \
   -d '{
     "name": "WooCommerce — <shop name>",
     "redirectUri": "https://<shop>/wp-admin/",
-    "scopes": ["orders.read", "orders.write"]
+    "scopes": ["orders.read", "orders.write",
+               "customers.read", "customers.write",
+               "products.read", "products.write",
+               "brands.write", "categories.write", "collections.write"]
   }'
 ```
 

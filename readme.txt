@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.2.4
+Stable tag: 1.2.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,8 +37,10 @@ WooCommerce order status from the platform.
 1. Upload and activate the plugin (WooCommerce must be active).
 2. Open **Shopify Pulse** in the admin menu.
 3. Enter the Platform API base URL (host only), Store SID, OAuth Client ID and
-   Client Secret. Register the OAuth app on the platform with scopes
-   `orders.read` and `orders.write`.
+   Client Secret. Register the OAuth app on the platform with scopes for the
+   features you enable (orders, customers, products, brands, categories,
+   collections) — orders-only is not enough once product/customer/catalog sync
+   is turned on. See SETUP.md for the full list.
 4. Choose what to sync and click **Test connection**.
 
 == Frequently Asked Questions ==
@@ -54,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.2.5 =
+* Fix: token now requests the app's full registered scope set instead of a hardcoded orders-only scope, so product/customer/catalog sync no longer 403s with "You don't have permission to do that". Cached token is dropped on upgrade so the fix applies immediately.
 
 = 1.2.4 =
 * Products list: a Shopify Pulse column showing Synced, or a per-product Sync button.
