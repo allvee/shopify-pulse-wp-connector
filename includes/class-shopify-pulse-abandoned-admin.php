@@ -47,6 +47,7 @@ class Shopify_Pulse_Abandoned_Admin {
 		add_action( 'wp_ajax_shopify_pulse_abandoned_query', array( $this, 'ajax_query' ) );
 		add_action( 'wp_ajax_shopify_pulse_abandoned_courier', array( $this, 'ajax_courier' ) );
 		add_action( 'wp_ajax_shopify_pulse_abandoned_action', array( $this, 'ajax_action' ) );
+		add_action( 'wp_ajax_shopify_pulse_abandoned_bulk', array( $this, 'ajax_bulk' ) );
 		add_action( 'wp_ajax_shopify_pulse_abandoned_details', array( $this, 'ajax_details' ) );
 	}
 
@@ -275,7 +276,7 @@ class Shopify_Pulse_Abandoned_Admin {
 	/** Render the <tbody> rows for a set of carts (shared by page + AJAX). */
 	private function render_rows( $rows, $currency, $active ) {
 		if ( empty( $rows ) ) {
-			return '<tr><td colspan="8"><div class="sp-empty">' . esc_html__( 'No carts match this filter.', 'shopify-pulse-connector' ) . '</div></td></tr>';
+			return '<tr><td colspan="9"><div class="sp-empty">' . esc_html__( 'No carts match this filter.', 'shopify-pulse-connector' ) . '</div></td></tr>';
 		}
 		ob_start();
 		foreach ( $rows as $row ) {
@@ -299,6 +300,7 @@ class Shopify_Pulse_Abandoned_Admin {
 			$key_attr    = esc_attr( $row->session_key );
 			?>
 			<tr data-key="<?php echo $key_attr; ?>" data-status="<?php echo esc_attr( $row->status ); ?>">
+				<td class="sp-cb-cell"><input type="checkbox" class="sp-cb" value="<?php echo $key_attr; ?>" aria-label="<?php esc_attr_e( 'Select cart', 'shopify-pulse-connector' ); ?>" /></td>
 				<td>
 					<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
 					<div class="sp-contact">
@@ -440,6 +442,69 @@ class Shopify_Pulse_Abandoned_Admin {
 			default:
 				wp_send_json_error( array( 'message' => __( 'Unknown action.', 'shopify-pulse-connector' ) ) );
 		}
+	}
+
+	/**
+	 * Apply one action to many selected carts: resync | convert | cancel | fake
+	 * | delete. Iterates so one bad row never aborts the batch; returns done /
+	 * failed counts (+ created order ids for convert).
+	 */
+	public function ajax_bulk() {
+		$op = isset( $_POST['op'] ) ? sanitize_key( wp_unslash( $_POST['op'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$this->guard_ajax( 'resync' === $op );
+		if ( 'resync' === $op && ! $this->settings->get( 'enable_abandoned' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Abandoned-cart sync is turned off in settings.', 'shopify-pulse-connector' ) ) );
+		}
+		$allowed = array( 'resync', 'convert', 'cancel', 'fake', 'delete' );
+		if ( ! in_array( $op, $allowed, true ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unknown bulk action.', 'shopify-pulse-connector' ) ) );
+		}
+		$keys = isset( $_POST['keys'] ) && is_array( $_POST['keys'] ) // phpcs:ignore WordPress.Security.NonceVerification
+			? array_map( 'sanitize_text_field', wp_unslash( $_POST['keys'] ) )
+			: array();
+		$keys = array_values( array_filter( array_unique( $keys ) ) );
+		if ( empty( $keys ) ) {
+			wp_send_json_error( array( 'message' => __( 'No carts selected.', 'shopify-pulse-connector' ) ) );
+		}
+		// Bound the batch so a runaway selection can't tie up the request.
+		$keys = array_slice( $keys, 0, self::PER_PAGE );
+
+		$done   = 0;
+		$fail   = 0;
+		$orders = array();
+		foreach ( $keys as $key ) {
+			switch ( $op ) {
+				case 'resync':
+					$this->abandoned->resync( $key ) ? $done++ : $fail++;
+					break;
+				case 'convert':
+					$r = $this->abandoned->convert_to_wc_order( $key );
+					if ( is_wp_error( $r ) ) {
+						$fail++;
+					} else {
+						$done++;
+						$orders[] = (int) $r;
+					}
+					break;
+				case 'cancel':
+					$this->abandoned->set_status( $key, 'cancelled' ) ? $done++ : $fail++;
+					break;
+				case 'fake':
+					$this->abandoned->set_status( $key, 'fake' ) ? $done++ : $fail++;
+					break;
+				case 'delete':
+					$this->abandoned->delete_cart( $key ) ? $done++ : $fail++;
+					break;
+			}
+		}
+
+		$msg = sprintf(
+			/* translators: 1: succeeded count, 2: failed count */
+			__( '%1$d done, %2$d skipped.', 'shopify-pulse-connector' ),
+			$done,
+			$fail
+		);
+		wp_send_json_success( array( 'op' => $op, 'done' => $done, 'fail' => $fail, 'orders' => $orders, 'message' => $msg ) );
 	}
 
 	/** Full cart detail (modal body). */
@@ -588,6 +653,8 @@ class Shopify_Pulse_Abandoned_Admin {
 				.sp-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px;border-bottom:1px solid var(--bd);background:#fbfbfc}
 				.sp-toolbar label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px}
 				.sp-toolbar input,.sp-toolbar select{min-height:30px}
+				.sp-bulkbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--bd);background:#fff}
+				.sp-cb-cell{width:28px;text-align:center}
 				.sp-filters{display:flex;gap:6px;flex-wrap:wrap}
 				.sp-filters a{text-decoration:none;font-size:13px;padding:4px 10px;border:1px solid var(--bd);border-radius:999px;color:#1d2327;background:#fff}
 				.sp-filters a.on{background:var(--pri);border-color:var(--pri);color:#fff}
@@ -701,10 +768,25 @@ class Shopify_Pulse_Abandoned_Admin {
 					<div><span class="spinner" id="sp-spin" style="float:none;margin:0;"></span></div>
 				</div>
 
+				<div class="sp-bulkbar">
+					<select id="sp-bulk-op">
+						<option value=""><?php esc_html_e( 'Bulk actions', 'shopify-pulse-connector' ); ?></option>
+						<option value="resync"><?php esc_html_e( 'Resync', 'shopify-pulse-connector' ); ?></option>
+						<option value="convert"><?php esc_html_e( 'Convert to order', 'shopify-pulse-connector' ); ?></option>
+						<option value="cancel"><?php esc_html_e( 'Cancel', 'shopify-pulse-connector' ); ?></option>
+						<option value="fake"><?php esc_html_e( 'Mark fake', 'shopify-pulse-connector' ); ?></option>
+						<option value="delete"><?php esc_html_e( 'Delete', 'shopify-pulse-connector' ); ?></option>
+					</select>
+					<button type="button" class="button" id="sp-bulk-apply"><?php esc_html_e( 'Apply', 'shopify-pulse-connector' ); ?></button>
+					<span id="sp-bulk-count" class="sp-dim"></span>
+					<span id="sp-bulk-msg" class="sp-msg"></span>
+				</div>
+
 				<div style="overflow-x:auto;">
 					<table class="sp-tbl">
 						<thead>
 							<tr>
+								<th class="sp-cb-cell"><input type="checkbox" id="sp-cb-all" aria-label="<?php esc_attr_e( 'Select all', 'shopify-pulse-connector' ); ?>" /></th>
 								<th><?php esc_html_e( 'Customer', 'shopify-pulse-connector' ); ?></th>
 								<th><?php esc_html_e( 'Address', 'shopify-pulse-connector' ); ?></th>
 								<th><?php esc_html_e( 'Cart', 'shopify-pulse-connector' ); ?></th>
@@ -729,12 +811,16 @@ class Shopify_Pulse_Abandoned_Admin {
 		( function () {
 			var nonce   = <?php echo wp_json_encode( wp_create_nonce( self::NONCE ) ); ?>;
 			var strings = <?php echo wp_json_encode( array(
-				'syncing'   => __( 'Resyncing…', 'shopify-pulse-connector' ),
-				'failed'    => __( 'Failed', 'shopify-pulse-connector' ),
-				'confirmDel'=> __( 'Delete this cart from the worklist? (Does not affect the platform.)', 'shopify-pulse-connector' ),
+				'syncing'    => __( 'Resyncing…', 'shopify-pulse-connector' ),
+				'failed'     => __( 'Failed', 'shopify-pulse-connector' ),
+				'confirmDel' => __( 'Delete this cart from the worklist? (Does not affect the platform.)', 'shopify-pulse-connector' ),
 				'confirmFake'=> __( 'Mark this cart as fake?', 'shopify-pulse-connector' ),
-				'working'   => __( 'Working…', 'shopify-pulse-connector' ),
-				'count'     => __( '%d shown', 'shopify-pulse-connector' ),
+				'working'    => __( 'Working…', 'shopify-pulse-connector' ),
+				'count'      => __( '%d shown', 'shopify-pulse-connector' ),
+				'selected'   => __( '%d selected', 'shopify-pulse-connector' ),
+				'pickOp'     => __( 'Choose a bulk action first.', 'shopify-pulse-connector' ),
+				'pickRows'   => __( 'Select at least one cart.', 'shopify-pulse-connector' ),
+				'confirmBulk'=> __( 'Apply "%1$s" to %2$d selected cart(s)?', 'shopify-pulse-connector' ),
 			) ); ?>;
 			function post( data ) {
 				data.append( 'nonce', nonce );
@@ -755,7 +841,11 @@ class Shopify_Pulse_Abandoned_Admin {
 			var spin = document.getElementById( 'sp-spin' );
 			var rowsBody = document.getElementById( 'sp-rows' );
 			var countEl = document.getElementById( 'sp-count' );
-			var statusFilter = <?php echo wp_json_encode( $f['status'] ); ?>;
+			var cbAll = document.getElementById( 'sp-cb-all' );
+				var bulkCount = document.getElementById( 'sp-bulk-count' );
+				var statusFilter = <?php echo wp_json_encode( $f['status'] ); ?>;
+				function selectedKeys() { return Array.prototype.map.call( rowsBody.querySelectorAll( '.sp-cb:checked' ), function ( c ) { return c.value; } ); }
+				function updateBulkCount() { if ( bulkCount ) { bulkCount.textContent = strings.selected.replace( '%d', selectedKeys().length ); } }
 			var t = null;
 			function runQuery() {
 				spin.classList.add( 'is-active' );
@@ -770,7 +860,9 @@ class Shopify_Pulse_Abandoned_Admin {
 					if ( j && j.success ) {
 						rowsBody.innerHTML = j.data.html;
 						countEl.textContent = strings.count.replace( '%d', j.data.count );
+						if ( cbAll ) { cbAll.checked = false; }
 						bindRows();
+						updateBulkCount();
 					}
 				} ).catch( function () { spin.classList.remove( 'is-active' ); } );
 			}
@@ -782,6 +874,7 @@ class Shopify_Pulse_Abandoned_Admin {
 
 			// ── Row actions (delegated) ────────────────────────────────────
 			function bindRows() {
+					Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-cb' ), function ( c ) { c.addEventListener( 'change', updateBulkCount ); } );
 				Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-check-courier' ), function ( btn ) {
 					btn.addEventListener( 'click', function () {
 						var wrap = btn.closest( '.sp-courier' );
@@ -844,7 +937,38 @@ class Shopify_Pulse_Abandoned_Admin {
 			bindRows();
 
 			// ── Resync all ─────────────────────────────────────────────────
-			var all = document.getElementById( 'sp-resync-all' );
+			// ── Select-all + bulk actions ──────────────────────────────────
+			if ( cbAll ) {
+					cbAll.addEventListener( 'change', function () {
+						Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-cb' ), function ( c ) { c.checked = cbAll.checked; } );
+						updateBulkCount();
+					} );
+				}
+				var bulkOp = document.getElementById( 'sp-bulk-op' );
+				var bulkApply = document.getElementById( 'sp-bulk-apply' );
+				var bulkMsg = document.getElementById( 'sp-bulk-msg' );
+				if ( bulkApply ) {
+					bulkApply.addEventListener( 'click', function () {
+						var op = bulkOp.value;
+						if ( ! op ) { window.alert( strings.pickOp ); return; }
+						var keys = selectedKeys();
+						if ( ! keys.length ) { window.alert( strings.pickRows ); return; }
+						var label = bulkOp.options[ bulkOp.selectedIndex ].text;
+						if ( ! window.confirm( strings.confirmBulk.replace( '%1$s', label ).replace( '%2$d', keys.length ) ) ) { return; }
+						bulkApply.disabled = true; bulkMsg.textContent = strings.working; bulkMsg.style.color = '#555';
+						var d = fd( 'shopify_pulse_abandoned_bulk', { op: op } );
+						keys.forEach( function ( k ) { d.append( 'keys[]', k ); } );
+						post( d ).then( function ( j ) {
+							bulkApply.disabled = false;
+							bulkMsg.textContent = ( j && j.data && j.data.message ) ? j.data.message : strings.failed;
+							bulkMsg.style.color = ( j && j.success ) ? '#146c43' : '#b32d2e';
+							if ( j && j.success ) { bulkOp.value = ''; runQuery(); }
+						} ).catch( function () { bulkApply.disabled = false; bulkMsg.textContent = strings.failed; bulkMsg.style.color = '#b32d2e'; } );
+					} );
+				}
+				updateBulkCount();
+
+				var all = document.getElementById( 'sp-resync-all' );
 			var msg = document.getElementById( 'sp-resync-msg' );
 			if ( all ) {
 				all.addEventListener( 'click', function () {

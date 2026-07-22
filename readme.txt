@@ -59,6 +59,7 @@ store). Run separate sites for separate stores.
 
 = 1.4.0 =
 * Abandoned carts screen is now a full worklist matching the platform: per-row Check courier ratio (bdcourier delivery-success %), Convert to a WooCommerce order, Cancel, mark Fake, View details, Delete, and Sync/Resync.
+* Bulk actions: select rows (or select-all) and Resync, Convert to order, Cancel, mark Fake, or Delete the whole selection at once.
 * AJAX search (name / phone / email / product) plus filters by status, product, and captured date range — no page reload.
 * Convert creates a native WooCommerce order (pending) from the captured cart — re-adding products by id/SKU with the captured price — so it flows through the normal order pipeline and mirrors to the platform. Cancel / Fake only change the local status and Delete only removes the local row; none touch the platform (the cart was already synced there on capture).
 * Captured lines now record the product id, enabling the product filter and exact re-add on Convert.
