@@ -157,16 +157,27 @@ class Shopify_Pulse_Install {
   subtotal decimal(18,4) NOT NULL DEFAULT 0,
   currency varchar(8) DEFAULT NULL,
   furthest_step varchar(32) DEFAULT NULL,
+  status varchar(20) NOT NULL DEFAULT 'active',
+  wc_order_id bigint(20) unsigned DEFAULT NULL,
   converted tinyint(1) NOT NULL DEFAULT 0,
   synced tinyint(1) NOT NULL DEFAULT 0,
   synced_hash varchar(64) DEFAULT NULL,
   created_at datetime DEFAULT NULL,
   updated_at datetime DEFAULT NULL,
   PRIMARY KEY  (session_key),
+  KEY status_synced_updated (status, synced, updated_at),
   KEY converted_synced_updated (converted, synced, updated_at)
 ) {$charset_collate};";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
+
+		// Back-fill the disposition column on installs upgrading from a build
+		// that only had the `converted` flag, so an already-recovered cart keeps
+		// its status after the column is added (dbDelta defaults it to 'active').
+		$col = $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM ' . $table . ' LIKE %s', 'status' ) ); // phpcs:ignore WordPress.DB
+		if ( 'status' === $col ) {
+			$wpdb->query( "UPDATE {$table} SET status = 'converted' WHERE converted = 1 AND status = 'active'" ); // phpcs:ignore WordPress.DB
+		}
 	}
 }

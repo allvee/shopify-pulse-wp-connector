@@ -2,14 +2,16 @@
 /**
  * "Abandoned carts" admin screen: a submenu under Shopify Pulse that turns the
  * local capture table ({@see Shopify_Pulse_Abandoned_Sync::table_name()}) into
- * an operator worklist — headline analytics, a recovery funnel, and a filtered
- * table of every captured cart with a per-row (and bulk) Resync action.
+ * a full operator worklist — headline analytics, a recovery funnel, AJAX
+ * search + filters (status / product / date range), and per-row actions:
+ * check courier ratio, convert to a WooCommerce order, cancel, mark fake,
+ * view details, delete, and (re)sync.
  *
- * Data source is the LOCAL table only — no platform round-trip to render — so
- * the page is instant and works even while the connection is paused. Resync
- * re-pushes to POST /connect/abandoned, which upserts on (sid, fingerprint);
- * the fingerprint is derived from the stable WC session key, so resyncing can
- * never duplicate a cart on the platform.
+ * Data source is the LOCAL table (no platform round-trip to render). An
+ * abandoned cart IS an incomplete order: cancel / fake only flip a local
+ * status, delete removes the local row, and none of those touch the platform —
+ * the cart was already mirrored there when it was captured. Only Resync (push)
+ * and the courier-ratio lookup call the platform API.
  *
  * @package ShopifyPulse
  */
@@ -42,6 +44,10 @@ class Shopify_Pulse_Abandoned_Admin {
 	public function register() {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'wp_ajax_shopify_pulse_abandoned_resync', array( $this, 'ajax_resync' ) );
+		add_action( 'wp_ajax_shopify_pulse_abandoned_query', array( $this, 'ajax_query' ) );
+		add_action( 'wp_ajax_shopify_pulse_abandoned_courier', array( $this, 'ajax_courier' ) );
+		add_action( 'wp_ajax_shopify_pulse_abandoned_action', array( $this, 'ajax_action' ) );
+		add_action( 'wp_ajax_shopify_pulse_abandoned_details', array( $this, 'ajax_details' ) );
 	}
 
 	public function add_menu() {
@@ -62,6 +68,10 @@ class Shopify_Pulse_Abandoned_Admin {
 		return $t === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $t ) ); // phpcs:ignore WordPress.DB
 	}
 
+	private function reachable_sql() {
+		return "( ( email IS NOT NULL AND email <> '' ) OR ( phone IS NOT NULL AND phone <> '' ) )";
+	}
+
 	/**
 	 * Headline analytics from cheap aggregates over the local table.
 	 *
@@ -69,19 +79,22 @@ class Shopify_Pulse_Abandoned_Admin {
 	 */
 	private function stats() {
 		global $wpdb;
-		$t = Shopify_Pulse_Abandoned_Sync::table_name();
-		$reachable = "( ( email IS NOT NULL AND email <> '' ) OR ( phone IS NOT NULL AND phone <> '' ) )";
+		$t         = Shopify_Pulse_Abandoned_Sync::table_name();
+		$reachable = $this->reachable_sql();
 
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
 			"SELECT
 				COUNT(*) AS total,
-				SUM(CASE WHEN converted = 1 THEN 1 ELSE 0 END) AS recovered,
-				SUM(CASE WHEN converted = 0 AND synced = 1 THEN 1 ELSE 0 END) AS pushed,
-				SUM(CASE WHEN converted = 0 AND synced = 0 AND {$reachable} THEN 1 ELSE 0 END) AS pending,
-				SUM(CASE WHEN converted = 0 AND NOT {$reachable} THEN 1 ELSE 0 END) AS unreachable,
-				SUM(CASE WHEN converted = 0 AND {$reachable} THEN 1 ELSE 0 END) AS reachable_open,
-				SUM(CASE WHEN converted = 0 THEN subtotal ELSE 0 END) AS open_value,
-				SUM(CASE WHEN converted = 1 THEN subtotal ELSE 0 END) AS recovered_value
+				SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) AS recovered,
+				SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+				SUM(CASE WHEN status = 'fake' THEN 1 ELSE 0 END) AS fake,
+				SUM(CASE WHEN status = 'active' AND synced = 1 THEN 1 ELSE 0 END) AS pushed,
+				SUM(CASE WHEN status = 'active' AND synced = 0 AND {$reachable} THEN 1 ELSE 0 END) AS pending,
+				SUM(CASE WHEN status = 'active' AND NOT {$reachable} THEN 1 ELSE 0 END) AS unreachable,
+				SUM(CASE WHEN status = 'active' AND {$reachable} THEN 1 ELSE 0 END) AS reachable_open,
+				SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS open_count,
+				SUM(CASE WHEN status = 'active' THEN subtotal ELSE 0 END) AS open_value,
+				SUM(CASE WHEN status = 'converted' THEN subtotal ELSE 0 END) AS recovered_value
 			FROM {$t}",
 			ARRAY_A
 		);
@@ -89,24 +102,25 @@ class Shopify_Pulse_Abandoned_Admin {
 
 		$funnel = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			"SELECT COALESCE(NULLIF(furthest_step, ''), 'unknown') AS step, COUNT(*) AS n
-			 FROM {$t} WHERE converted = 0 GROUP BY step ORDER BY n DESC",
+			 FROM {$t} WHERE status = 'active' GROUP BY step ORDER BY n DESC",
 			ARRAY_A
 		);
 
-		$total       = (int) ( $row['total'] ?? 0 );
-		$recovered   = (int) ( $row['recovered'] ?? 0 );
-		$open        = $total - $recovered;
-		$open_val    = (float) ( $row['open_value'] ?? 0 );
-		$reach_open  = (int) ( $row['reachable_open'] ?? 0 );
+		$total     = (int) ( $row['total'] ?? 0 );
+		$recovered = (int) ( $row['recovered'] ?? 0 );
+		$open      = (int) ( $row['open_count'] ?? 0 );
+		$open_val  = (float) ( $row['open_value'] ?? 0 );
 
 		return array(
 			'total'           => $total,
 			'open'            => $open,
 			'recovered'       => $recovered,
+			'cancelled'       => (int) ( $row['cancelled'] ?? 0 ),
+			'fake'            => (int) ( $row['fake'] ?? 0 ),
 			'pushed'          => (int) ( $row['pushed'] ?? 0 ),
 			'pending'         => (int) ( $row['pending'] ?? 0 ),
 			'unreachable'     => (int) ( $row['unreachable'] ?? 0 ),
-			'reachable_open'  => $reach_open,
+			'reachable_open'  => (int) ( $row['reachable_open'] ?? 0 ),
 			'open_value'      => $open_val,
 			'recovered_value' => (float) ( $row['recovered_value'] ?? 0 ),
 			'avg_open'        => $open > 0 ? $open_val / $open : 0,
@@ -116,36 +130,108 @@ class Shopify_Pulse_Abandoned_Admin {
 	}
 
 	/**
-	 * Fetch a page of rows honouring the status filter.
+	 * Build the WHERE clause + prepared args for the current filter set.
 	 *
-	 * @param string $filter all|open|pending|recovered|unreachable
-	 * @return array
+	 * @param array $f status|search|product|from|to
+	 * @return array{0:string,1:array}
 	 */
-	private function rows( $filter ) {
-		global $wpdb;
-		$t         = Shopify_Pulse_Abandoned_Sync::table_name();
-		$reachable = "( ( email IS NOT NULL AND email <> '' ) OR ( phone IS NOT NULL AND phone <> '' ) )";
-		switch ( $filter ) {
-			case 'recovered':
-				$where = 'converted = 1';
+	private function build_where( $f ) {
+		$reachable = $this->reachable_sql();
+		$clauses   = array( '1=1' );
+		$args      = array();
+
+		switch ( isset( $f['status'] ) ? $f['status'] : 'active' ) {
+			case 'active':
+				$clauses[] = "status = 'active'";
 				break;
 			case 'pending':
-				$where = "converted = 0 AND synced = 0 AND {$reachable}";
+				$clauses[] = "status = 'active' AND synced = 0 AND {$reachable}";
 				break;
 			case 'unreachable':
-				$where = "converted = 0 AND NOT {$reachable}";
+				$clauses[] = "status = 'active' AND NOT {$reachable}";
 				break;
-			case 'open':
-				$where = 'converted = 0';
+			case 'recovered':
+				$clauses[] = "status = 'converted'";
+				break;
+			case 'cancelled':
+				$clauses[] = "status = 'cancelled'";
+				break;
+			case 'fake':
+				$clauses[] = "status = 'fake'";
 				break;
 			case 'all':
 			default:
-				$where = '1=1';
 				break;
 		}
-		return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB
-			$wpdb->prepare( "SELECT * FROM {$t} WHERE {$where} ORDER BY updated_at DESC LIMIT %d", self::PER_PAGE )
-		);
+
+		if ( ! empty( $f['search'] ) ) {
+			global $wpdb;
+			$like      = '%' . $wpdb->esc_like( $f['search'] ) . '%';
+			$clauses[] = '( customer_name LIKE %s OR email LIKE %s OR phone LIKE %s OR cart_json LIKE %s )';
+			$args[]    = $like;
+			$args[]    = $like;
+			$args[]    = $like;
+			$args[]    = $like;
+		}
+
+		if ( ! empty( $f['product'] ) ) {
+			// product_id is the first key of each captured line, always followed
+			// by a comma, so this can't confuse 123 with 1234.
+			$clauses[] = 'cart_json LIKE %s';
+			$args[]    = '%"product_id":' . (int) $f['product'] . ',%';
+		}
+
+		$date_col = 'COALESCE(created_at, updated_at)';
+		if ( ! empty( $f['from'] ) ) {
+			$clauses[] = "{$date_col} >= %s";
+			$args[]    = $f['from'] . ' 00:00:00';
+		}
+		if ( ! empty( $f['to'] ) ) {
+			$clauses[] = "{$date_col} <= %s";
+			$args[]    = $f['to'] . ' 23:59:59';
+		}
+
+		return array( implode( ' AND ', $clauses ), $args );
+	}
+
+	/** Fetch a filtered page of rows. */
+	private function rows( $f ) {
+		global $wpdb;
+		$t = Shopify_Pulse_Abandoned_Sync::table_name();
+		list( $where, $args ) = $this->build_where( $f );
+		$args[] = self::PER_PAGE;
+		$sql    = "SELECT * FROM {$t} WHERE {$where} ORDER BY updated_at DESC LIMIT %d";
+		return (array) $wpdb->get_results( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore WordPress.DB
+	}
+
+	/**
+	 * Distinct products seen across captured carts, for the product filter.
+	 * Scans a bounded window of carts (worklist is GC'd to 30 days).
+	 *
+	 * @return array<int,string> product_id => label
+	 */
+	private function product_options() {
+		global $wpdb;
+		$t    = Shopify_Pulse_Abandoned_Sync::table_name();
+		$rows = (array) $wpdb->get_col( "SELECT cart_json FROM {$t} ORDER BY updated_at DESC LIMIT 1000" ); // phpcs:ignore WordPress.DB
+		$out  = array();
+		foreach ( $rows as $json ) {
+			$lines = json_decode( (string) $json, true );
+			if ( ! is_array( $lines ) ) {
+				continue;
+			}
+			foreach ( $lines as $l ) {
+				if ( empty( $l['product_id'] ) ) {
+					continue;
+				}
+				$pid = (int) $l['product_id'];
+				if ( ! isset( $out[ $pid ] ) ) {
+					$out[ $pid ] = ! empty( $l['title'] ) ? (string) $l['title'] : ( '#' . $pid );
+				}
+			}
+		}
+		natcasesort( $out );
+		return $out;
 	}
 
 	/** Currency-format a number using the store's WooCommerce currency symbol. */
@@ -160,8 +246,13 @@ class Shopify_Pulse_Abandoned_Admin {
 	/** Classify a row into a status label + tone for the badge. */
 	private function row_status( $row ) {
 		$reachable = ( ! empty( $row->email ) || ! empty( $row->phone ) );
-		if ( (int) $row->converted === 1 ) {
-			return array( 'recovered', __( 'Recovered', 'shopify-pulse-connector' ), 'ok' );
+		switch ( $row->status ) {
+			case 'converted':
+				return array( 'recovered', __( 'Recovered', 'shopify-pulse-connector' ), 'ok' );
+			case 'cancelled':
+				return array( 'cancelled', __( 'Cancelled', 'shopify-pulse-connector' ), 'muted' );
+			case 'fake':
+				return array( 'fake', __( 'Fake', 'shopify-pulse-connector' ), 'err' );
 		}
 		if ( ! $reachable ) {
 			return array( 'unreachable', __( 'Unreachable', 'shopify-pulse-connector' ), 'muted' );
@@ -172,50 +263,290 @@ class Shopify_Pulse_Abandoned_Admin {
 		return array( 'pending', __( 'Pending push', 'shopify-pulse-connector' ), 'warn' );
 	}
 
-	public function ajax_resync() {
+	/** HPOS-safe order edit URL. */
+	private function order_edit_url( $order_id ) {
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& method_exists( '\Automattic\WooCommerce\Utilities\OrderUtil', 'get_order_admin_edit_url' ) ) {
+			return \Automattic\WooCommerce\Utilities\OrderUtil::get_order_admin_edit_url( $order_id );
+		}
+		return admin_url( 'post.php?post=' . (int) $order_id . '&action=edit' );
+	}
+
+	/** Render the <tbody> rows for a set of carts (shared by page + AJAX). */
+	private function render_rows( $rows, $currency, $active ) {
+		if ( empty( $rows ) ) {
+			return '<tr><td colspan="8"><div class="sp-empty">' . esc_html__( 'No carts match this filter.', 'shopify-pulse-connector' ) . '</div></td></tr>';
+		}
+		ob_start();
+		foreach ( $rows as $row ) {
+			$lines = json_decode( (string) $row->cart_json, true );
+			$lines = is_array( $lines ) ? $lines : array();
+			$count = 0;
+			foreach ( $lines as $l ) {
+				$count += isset( $l['qty'] ) ? (int) $l['qty'] : 1;
+			}
+			$first = ! empty( $lines[0]['title'] ) ? (string) $lines[0]['title'] : '';
+			$addr  = json_decode( (string) $row->address_json, true );
+			$addr  = is_array( $addr ) ? $addr : array();
+			$addr_bits = array_filter( array(
+				isset( $addr['address1'] ) ? $addr['address1'] : '',
+				isset( $addr['city'] ) ? $addr['city'] : '',
+				isset( $addr['province'] ) ? $addr['province'] : '',
+			) );
+			list( $status_key, $status_label, $status_tone ) = $this->row_status( $row );
+			$is_active   = ( 'active' === $row->status );
+			$reachable   = ( ! empty( $row->email ) || ! empty( $row->phone ) );
+			$key_attr    = esc_attr( $row->session_key );
+			?>
+			<tr data-key="<?php echo $key_attr; ?>" data-status="<?php echo esc_attr( $row->status ); ?>">
+				<td>
+					<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
+					<div class="sp-contact">
+						<?php if ( $row->phone ) : ?><span>📞 <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
+						<?php if ( $row->email ) : ?><span>✉ <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
+						<?php if ( ! $reachable ) : ?><span><?php esc_html_e( 'no contact', 'shopify-pulse-connector' ); ?></span><?php endif; ?>
+					</div>
+					<?php if ( $reachable ) : ?>
+						<div class="sp-courier" data-phone="<?php echo esc_attr( $row->phone ? $row->phone : '' ); ?>">
+							<?php if ( $row->phone ) : ?>
+								<button type="button" class="button-link sp-check-courier" <?php disabled( ! $active ); ?>><span class="dashicons dashicons-search"></span> <?php esc_html_e( 'Check ratio', 'shopify-pulse-connector' ); ?></button>
+							<?php endif; ?>
+						</div>
+					<?php endif; ?>
+				</td>
+				<td class="sp-addr">
+					<?php echo $addr_bits ? esc_html( implode( ', ', $addr_bits ) ) : '<span class="sp-dim">—</span>'; ?>
+				</td>
+				<td>
+					<div class="sp-mono"><?php echo esc_html( sprintf( _n( '%d item', '%d items', $count, 'shopify-pulse-connector' ), $count ) ); ?></div>
+					<?php if ( $first ) : ?><div class="sp-contact"><?php echo esc_html( wp_html_excerpt( $first, 42, '…' ) ); ?></div><?php endif; ?>
+				</td>
+				<td class="sp-mono"><?php echo esc_html( $this->money( $row->subtotal, $row->currency ? $row->currency : $currency ) ); ?></td>
+				<td><?php echo esc_html( $row->furthest_step ? ucfirst( (string) $row->furthest_step ) : '—' ); ?></td>
+				<td>
+					<span class="sp-badge <?php echo esc_attr( $status_tone ); ?>"><?php echo esc_html( $status_label ); ?></span>
+					<?php if ( 'converted' === $row->status && $row->wc_order_id ) : ?>
+						<div><a class="sp-dim" href="<?php echo esc_url( $this->order_edit_url( $row->wc_order_id ) ); ?>">#<?php echo (int) $row->wc_order_id; ?> →</a></div>
+					<?php endif; ?>
+				</td>
+				<td class="sp-dim sp-nowrap"><?php echo esc_html( $row->updated_at ? human_time_diff( strtotime( $row->updated_at . ' UTC' ) ) . ' ' . __( 'ago', 'shopify-pulse-connector' ) : '—' ); ?></td>
+				<td class="sp-actions-cell">
+					<button type="button" class="button button-small sp-act" data-op="details"><?php esc_html_e( 'Details', 'shopify-pulse-connector' ); ?></button>
+					<?php if ( $is_active ) : ?>
+						<button type="button" class="button button-small button-primary sp-act" data-op="convert"><?php esc_html_e( 'Convert', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button button-small sp-act" data-op="resync" <?php disabled( ! $active || ! $reachable ); ?>><?php esc_html_e( 'Resync', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button button-small sp-act" data-op="cancel"><?php esc_html_e( 'Cancel', 'shopify-pulse-connector' ); ?></button>
+						<button type="button" class="button button-small sp-act" data-op="fake"><?php esc_html_e( 'Fake', 'shopify-pulse-connector' ); ?></button>
+					<?php elseif ( 'cancelled' === $row->status || 'fake' === $row->status ) : ?>
+						<button type="button" class="button button-small sp-act" data-op="reopen"><?php esc_html_e( 'Reopen', 'shopify-pulse-connector' ); ?></button>
+					<?php endif; ?>
+					<button type="button" class="button button-small sp-act sp-danger" data-op="delete"><?php esc_html_e( 'Delete', 'shopify-pulse-connector' ); ?></button>
+				</td>
+			</tr>
+			<?php
+		}
+		return ob_get_clean();
+	}
+
+	// ── AJAX ────────────────────────────────────────────────────────────────
+
+	private function guard_ajax( $need_connection = false ) {
 		check_ajax_referer( self::NONCE, 'nonce' );
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'shopify-pulse-connector' ) ), 403 );
 		}
-		if ( ! $this->settings->is_active() ) {
+		if ( $need_connection && ! $this->settings->is_active() ) {
 			wp_send_json_error( array( 'message' => __( 'Connection is paused. Activate it first.', 'shopify-pulse-connector' ) ) );
 		}
+	}
+
+	private function read_filters() {
+		return array(
+			'status'  => isset( $_POST['status'] ) ? sanitize_key( wp_unslash( $_POST['status'] ) ) : 'active', // phpcs:ignore WordPress.Security.NonceVerification
+			'search'  => isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+			'product' => isset( $_POST['product'] ) ? absint( wp_unslash( $_POST['product'] ) ) : 0, // phpcs:ignore WordPress.Security.NonceVerification
+			'from'    => isset( $_POST['from'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_POST['from'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+			'to'      => isset( $_POST['to'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_POST['to'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+		);
+	}
+
+	/** Filtered table rows (AJAX search / filter). */
+	public function ajax_query() {
+		$this->guard_ajax();
+		$f        = $this->read_filters();
+		$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'BDT';
+		$rows     = $this->rows( $f );
+		wp_send_json_success( array(
+			'html'  => $this->render_rows( $rows, $currency, $this->settings->is_active() && $this->settings->get( 'enable_abandoned' ) ),
+			'count' => count( $rows ),
+		) );
+	}
+
+	/** Per-row courier delivery-success ratio (platform /connect/courier). */
+	public function ajax_courier() {
+		$this->guard_ajax( true );
+		$phone = isset( $_POST['phone'] ) ? sanitize_text_field( wp_unslash( $_POST['phone'] ) ) : '';
+		if ( '' === $phone ) {
+			wp_send_json_error( array( 'message' => __( 'No phone on this cart.', 'shopify-pulse-connector' ) ) );
+		}
+		$res = Shopify_Pulse_Plugin::instance()->api()->get( '/connect/courier?phone=' . rawurlencode( $phone ) );
+		if ( is_wp_error( $res ) ) {
+			wp_send_json_error( array( 'message' => $res->get_error_message() ) );
+		}
+		wp_send_json_success( array(
+			'successRatio' => isset( $res['successRatio'] ) ? $res['successRatio'] : null,
+			'totalParcel'  => isset( $res['totalParcel'] ) ? $res['totalParcel'] : null,
+		) );
+	}
+
+	/** Row action: convert | cancel | fake | reopen | delete. */
+	public function ajax_action() {
+		$op = isset( $_POST['op'] ) ? sanitize_key( wp_unslash( $_POST['op'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$this->guard_ajax( 'resync' === $op );
+		$key = isset( $_POST['session_key'] ) ? sanitize_text_field( wp_unslash( $_POST['session_key'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		if ( '' === $key ) {
+			wp_send_json_error( array( 'message' => __( 'Missing cart reference.', 'shopify-pulse-connector' ) ) );
+		}
+
+		switch ( $op ) {
+			case 'convert':
+				$res = $this->abandoned->convert_to_wc_order( $key );
+				if ( is_wp_error( $res ) ) {
+					wp_send_json_error( array( 'message' => $res->get_error_message() ) );
+				}
+				wp_send_json_success( array(
+					'message'  => sprintf( __( 'Order #%d created', 'shopify-pulse-connector' ), $res ),
+					'orderId'  => (int) $res,
+					'orderUrl' => $this->order_edit_url( $res ),
+					'reload'   => true,
+				) );
+				break;
+			case 'cancel':
+				$this->abandoned->set_status( $key, 'cancelled' );
+				wp_send_json_success( array( 'message' => __( 'Cancelled', 'shopify-pulse-connector' ), 'reload' => true ) );
+				break;
+			case 'fake':
+				$this->abandoned->set_status( $key, 'fake' );
+				wp_send_json_success( array( 'message' => __( 'Marked fake', 'shopify-pulse-connector' ), 'reload' => true ) );
+				break;
+			case 'reopen':
+				$this->abandoned->set_status( $key, 'active' );
+				wp_send_json_success( array( 'message' => __( 'Reopened', 'shopify-pulse-connector' ), 'reload' => true ) );
+				break;
+			case 'delete':
+				$this->abandoned->delete_cart( $key );
+				wp_send_json_success( array( 'message' => __( 'Deleted', 'shopify-pulse-connector' ), 'removeRow' => true ) );
+				break;
+			default:
+				wp_send_json_error( array( 'message' => __( 'Unknown action.', 'shopify-pulse-connector' ) ) );
+		}
+	}
+
+	/** Full cart detail (modal body). */
+	public function ajax_details() {
+		$this->guard_ajax();
+		$key = isset( $_POST['session_key'] ) ? sanitize_text_field( wp_unslash( $_POST['session_key'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$row = $this->abandoned->get_row( $key );
+		if ( ! $row ) {
+			wp_send_json_error( array( 'message' => __( 'Cart not found.', 'shopify-pulse-connector' ) ) );
+		}
+		$currency = $row->currency ? $row->currency : ( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'BDT' );
+		$lines    = json_decode( (string) $row->cart_json, true );
+		$lines    = is_array( $lines ) ? $lines : array();
+		$addr     = json_decode( (string) $row->address_json, true );
+		$addr     = is_array( $addr ) ? $addr : array();
+
+		ob_start();
+		?>
+		<div class="sp-dl">
+			<h3><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous shopper', 'shopify-pulse-connector' ) ); ?></h3>
+			<p class="sp-dim">
+				<?php echo $row->phone ? esc_html( $row->phone ) : ''; ?>
+				<?php echo ( $row->phone && $row->email ) ? ' · ' : ''; ?>
+				<?php echo $row->email ? esc_html( $row->email ) : ''; ?>
+			</p>
+			<?php if ( $addr ) : ?>
+				<p><strong><?php esc_html_e( 'Address', 'shopify-pulse-connector' ); ?>:</strong>
+				<?php
+				$bits = array_filter( array(
+					isset( $addr['address1'] ) ? $addr['address1'] : '',
+					isset( $addr['address2'] ) ? $addr['address2'] : '',
+					isset( $addr['city'] ) ? $addr['city'] : '',
+					isset( $addr['province'] ) ? $addr['province'] : '',
+					isset( $addr['zip'] ) ? $addr['zip'] : '',
+					isset( $addr['country'] ) ? $addr['country'] : '',
+				) );
+				echo esc_html( implode( ', ', $bits ) );
+				?>
+				</p>
+			<?php endif; ?>
+			<table class="sp-tbl" style="margin-top:8px;">
+				<thead><tr>
+					<th><?php esc_html_e( 'Item', 'shopify-pulse-connector' ); ?></th>
+					<th><?php esc_html_e( 'Qty', 'shopify-pulse-connector' ); ?></th>
+					<th><?php esc_html_e( 'Price', 'shopify-pulse-connector' ); ?></th>
+				</tr></thead>
+				<tbody>
+				<?php foreach ( $lines as $l ) : ?>
+					<tr>
+						<td><?php echo esc_html( ! empty( $l['title'] ) ? $l['title'] : '—' ); ?><?php echo ! empty( $l['sku'] ) ? ' <span class="sp-dim">· ' . esc_html( $l['sku'] ) . '</span>' : ''; ?></td>
+						<td class="sp-mono"><?php echo (int) ( isset( $l['qty'] ) ? $l['qty'] : 1 ); ?></td>
+						<td class="sp-mono"><?php echo esc_html( $this->money( isset( $l['price'] ) ? $l['price'] : 0, $currency ) ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+			<p style="margin-top:8px;"><strong><?php esc_html_e( 'Subtotal', 'shopify-pulse-connector' ); ?>:</strong> <?php echo esc_html( $this->money( $row->subtotal, $currency ) ); ?></p>
+			<p class="sp-dim">
+				<?php esc_html_e( 'Furthest step', 'shopify-pulse-connector' ); ?>: <?php echo esc_html( $row->furthest_step ? $row->furthest_step : '—' ); ?>
+				<?php if ( 'converted' === $row->status && $row->wc_order_id ) : ?> · <a href="<?php echo esc_url( $this->order_edit_url( $row->wc_order_id ) ); ?>"><?php echo esc_html( sprintf( __( 'Order #%d', 'shopify-pulse-connector' ), (int) $row->wc_order_id ) ); ?></a><?php endif; ?>
+			</p>
+		</div>
+		<?php
+		wp_send_json_success( array( 'html' => ob_get_clean() ) );
+	}
+
+	public function ajax_resync() {
+		$this->guard_ajax( true );
 		if ( ! $this->settings->get( 'enable_abandoned' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Abandoned-cart sync is turned off in settings.', 'shopify-pulse-connector' ) ) );
 		}
-
 		$scope = isset( $_POST['scope'] ) ? sanitize_key( wp_unslash( $_POST['scope'] ) ) : 'one';
 		if ( 'all' === $scope ) {
 			$sent = $this->abandoned->resync_pending( self::PER_PAGE );
-			wp_send_json_success(
-				array(
-					'scope'   => 'all',
-					'sent'    => $sent,
-					/* translators: %d: number of carts */
-					'message' => sprintf( _n( 'Resynced %d cart.', 'Resynced %d carts.', $sent, 'shopify-pulse-connector' ), $sent ),
-				)
-			);
+			wp_send_json_success( array(
+				'sent'    => $sent,
+				/* translators: %d: number of carts */
+				'message' => sprintf( _n( 'Resynced %d cart.', 'Resynced %d carts.', $sent, 'shopify-pulse-connector' ), $sent ),
+			) );
 		}
-
 		$key = isset( $_POST['session_key'] ) ? sanitize_text_field( wp_unslash( $_POST['session_key'] ) ) : '';
 		if ( '' === $key ) {
 			wp_send_json_error( array( 'message' => __( 'Missing cart reference.', 'shopify-pulse-connector' ) ) );
 		}
 		$ok = $this->abandoned->resync( $key );
 		if ( $ok ) {
-			wp_send_json_success( array( 'scope' => 'one', 'message' => __( 'Resynced', 'shopify-pulse-connector' ) ) );
+			wp_send_json_success( array( 'message' => __( 'Resynced', 'shopify-pulse-connector' ) ) );
 		}
 		wp_send_json_error( array( 'message' => __( 'Could not resync — no contact captured, or the API rejected it. Check the logs.', 'shopify-pulse-connector' ) ) );
 	}
+
+	// ── Page ────────────────────────────────────────────────────────────────
 
 	public function render_page() {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			return;
 		}
-		$filter  = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : 'open'; // phpcs:ignore WordPress.Security.NonceVerification
-		$allowed = array( 'all', 'open', 'pending', 'recovered', 'unreachable' );
-		if ( ! in_array( $filter, $allowed, true ) ) {
-			$filter = 'open';
+		$f = array(
+			'status'  => isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : 'active', // phpcs:ignore WordPress.Security.NonceVerification
+			'search'  => isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+			'product' => isset( $_GET['product'] ) ? absint( wp_unslash( $_GET['product'] ) ) : 0, // phpcs:ignore WordPress.Security.NonceVerification
+			'from'    => isset( $_GET['from'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_GET['from'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+			'to'      => isset( $_GET['to'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_GET['to'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
+		);
+		$allowed = array( 'all', 'active', 'pending', 'recovered', 'cancelled', 'fake', 'unreachable' );
+		if ( ! in_array( $f['status'], $allowed, true ) ) {
+			$f['status'] = 'active';
 		}
 
 		if ( ! $this->table_ready() ) {
@@ -225,12 +556,13 @@ class Shopify_Pulse_Abandoned_Admin {
 		}
 
 		$k        = $this->stats();
-		$rows     = $this->rows( $filter );
+		$rows     = $this->rows( $f );
+		$products = $this->product_options();
 		$currency = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'BDT';
 		$active   = $this->settings->is_active() && $this->settings->get( 'enable_abandoned' );
 		$max_step = 0;
-		foreach ( $k['funnel'] as $f ) {
-			$max_step = max( $max_step, (int) $f['n'] );
+		foreach ( $k['funnel'] as $ff ) {
+			$max_step = max( $max_step, (int) $ff['n'] );
 		}
 		?>
 		<div class="wrap sp-ab">
@@ -239,41 +571,54 @@ class Shopify_Pulse_Abandoned_Admin {
 				.sp-ab .sp-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 4px}
 				.sp-ab h1{margin:0;font-size:22px}
 				.sp-ab .sp-sub{color:var(--muted);font-size:13px;margin:2px 0 0}
-				.sp-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:16px 0 18px}
+				.sp-dim{color:var(--muted)}.sp-nowrap{white-space:nowrap}
+				.sp-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:16px 0 18px}
 				.sp-kpi{background:#fff;border:1px solid var(--bd);border-left:3px solid var(--pri);border-radius:8px;padding:12px 14px}
-				.sp-kpi.ok{border-left-color:var(--ok)}.sp-kpi.warn{border-left-color:var(--warn)}.sp-kpi.muted{border-left-color:var(--muted)}.sp-kpi.info{border-left-color:var(--info)}
+				.sp-kpi.ok{border-left-color:var(--ok)}.sp-kpi.warn{border-left-color:var(--warn)}.sp-kpi.muted{border-left-color:var(--muted)}.sp-kpi.info{border-left-color:var(--info)}.sp-kpi.err{border-left-color:var(--err)}
 				.sp-kpi__label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
 				.sp-kpi__num{font-size:24px;font-weight:700;line-height:1.15;margin-top:6px;font-variant-numeric:tabular-nums;color:#1d2327}
 				.sp-kpi__sub{font-size:12px;color:var(--muted);margin-top:2px}
 				.sp-panel{background:#fff;border:1px solid var(--bd);border-radius:8px;margin:0 0 18px}
-				.sp-panel__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd);font-weight:600}
+				.sp-panel__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd);font-weight:600;flex-wrap:wrap}
 				.sp-panel__body{padding:14px}
 				.sp-funnel{display:flex;flex-direction:column;gap:8px}
 				.sp-funnel__row{display:grid;grid-template-columns:120px 1fr 48px;align-items:center;gap:10px;font-size:13px}
 				.sp-funnel__bar{height:10px;border-radius:999px;background:linear-gradient(90deg,#2271b1,#4a9fe0);min-width:3px}
 				.sp-funnel__track{background:#f0f0f1;border-radius:999px;overflow:hidden}
+				.sp-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px;border-bottom:1px solid var(--bd);background:#fbfbfc}
+				.sp-toolbar label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px}
+				.sp-toolbar input,.sp-toolbar select{min-height:30px}
 				.sp-filters{display:flex;gap:6px;flex-wrap:wrap}
 				.sp-filters a{text-decoration:none;font-size:13px;padding:4px 10px;border:1px solid var(--bd);border-radius:999px;color:#1d2327;background:#fff}
 				.sp-filters a.on{background:var(--pri);border-color:var(--pri);color:#fff}
 				.sp-tbl{width:100%;border-collapse:collapse;background:#fff}
 				.sp-tbl th,.sp-tbl td{text-align:left;padding:10px 12px;border-bottom:1px solid #f0f0f1;font-size:13px;vertical-align:top}
 				.sp-tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);background:#fbfbfc}
-				.sp-tbl tr:last-child td{border-bottom:0}
 				.sp-badge{display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:3px 9px;border-radius:999px;font-size:12px}
 				.sp-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
 				.sp-badge.ok{background:#edfaef;color:var(--ok)}.sp-badge.warn{background:#fcf5e6;color:var(--warn)}.sp-badge.err{background:#fcebea;color:var(--err)}.sp-badge.info{background:#e9f2fd;color:var(--info)}.sp-badge.muted{background:#f0f0f1;color:var(--muted)}
+				.sp-ratio{display:inline-flex;align-items:center;gap:5px;font-weight:600;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid}
+				.sp-ratio.g{background:#edfaef;color:var(--ok);border-color:#00844a33}.sp-ratio.a{background:#fcf5e6;color:var(--warn);border-color:#99680033}.sp-ratio.r{background:#fcebea;color:var(--err);border-color:#b32d2e33}
 				.sp-cust{font-weight:600}
 				.sp-contact{color:var(--muted);font-size:12px;margin-top:2px;line-height:1.5}
+				.sp-courier{margin-top:4px}
 				.sp-mono{font-variant-numeric:tabular-nums}
+				.sp-actions-cell{white-space:nowrap}
+				.sp-actions-cell .button{margin:0 2px 2px 0}
+				.sp-danger{color:var(--err);border-color:#b32d2e55}
 				.sp-empty{padding:40px 16px;text-align:center;color:var(--muted)}
 				.sp-ab .sp-msg{font-size:12px}
+				.sp-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px}
+				.sp-modal{background:#fff;border-radius:8px;max-width:560px;width:100%;max-height:85vh;overflow:auto;padding:20px;position:relative}
+				.sp-modal .sp-x{position:absolute;top:10px;right:12px;cursor:pointer;font-size:20px;color:var(--muted);background:none;border:0}
+				.sp-dl h3{margin:0 0 4px}
 				@media(max-width:900px){.sp-funnel__row{grid-template-columns:90px 1fr 40px}.sp-tbl thead{display:none}.sp-tbl,.sp-tbl tbody,.sp-tbl tr,.sp-tbl td{display:block;width:100%}.sp-tbl tr{border-bottom:1px solid var(--bd);padding:6px 0}.sp-tbl td{border:0;padding:4px 12px}}
 			</style>
 
 			<div class="sp-top">
 				<div>
 					<h1><?php esc_html_e( 'Abandoned carts', 'shopify-pulse-connector' ); ?></h1>
-					<p class="sp-sub"><?php esc_html_e( 'Captured on this WooCommerce store and mirrored to Shopify Pulse for recovery. Resync re-pushes without creating duplicates.', 'shopify-pulse-connector' ); ?></p>
+					<p class="sp-sub"><?php esc_html_e( 'Incomplete orders captured on this store and mirrored to Shopify Pulse. Convert to a WooCommerce order, check courier ratio, or dispose locally — cancel / fake / delete stay on this site.', 'shopify-pulse-connector' ); ?></p>
 				</div>
 				<div>
 					<button type="button" id="sp-resync-all" class="button button-primary" <?php disabled( ! $active || $k['pending'] < 1 ); ?>>
@@ -287,38 +632,16 @@ class Shopify_Pulse_Abandoned_Admin {
 			</div>
 
 			<?php if ( ! $active ) : ?>
-				<div class="notice notice-warning inline" style="margin:8px 0;"><p><?php esc_html_e( 'Abandoned-cart sync is paused or disabled. New carts aren’t captured and Resync is off until you enable it in Shopify Pulse settings.', 'shopify-pulse-connector' ); ?></p></div>
+				<div class="notice notice-warning inline" style="margin:8px 0;"><p><?php esc_html_e( 'Abandoned-cart sync is paused or disabled. Resync + courier check need an active connection; the rest of the worklist still works.', 'shopify-pulse-connector' ); ?></p></div>
 			<?php endif; ?>
 
 			<div class="sp-kpis">
-				<div class="sp-kpi">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Total captured', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['total'] ) ); ?></div>
-				</div>
-				<div class="sp-kpi warn">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Open carts', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['open'] ) ); ?></div>
-					<div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s reachable', 'shopify-pulse-connector' ), number_format_i18n( $k['reachable_open'] ) ) ); ?></div>
-				</div>
-				<div class="sp-kpi info">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Pushed', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['pushed'] ) ); ?></div>
-					<div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s pending', 'shopify-pulse-connector' ), number_format_i18n( $k['pending'] ) ) ); ?></div>
-				</div>
-				<div class="sp-kpi ok">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Recovered', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['recovered'] ) ); ?></div>
-					<div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s rate', 'shopify-pulse-connector' ), number_format_i18n( $k['recovery_rate'] * 100, 1 ) . '%' ) ); ?></div>
-				</div>
-				<div class="sp-kpi">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Open value', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num sp-mono"><?php echo esc_html( $this->money( $k['open_value'], $currency ) ); ?></div>
-					<div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( 'avg %s', 'shopify-pulse-connector' ), $this->money( $k['avg_open'], $currency ) ) ); ?></div>
-				</div>
-				<div class="sp-kpi ok">
-					<div class="sp-kpi__label"><?php esc_html_e( 'Recovered value', 'shopify-pulse-connector' ); ?></div>
-					<div class="sp-kpi__num sp-mono"><?php echo esc_html( $this->money( $k['recovered_value'], $currency ) ); ?></div>
-				</div>
+				<div class="sp-kpi"><div class="sp-kpi__label"><?php esc_html_e( 'Total', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['total'] ) ); ?></div></div>
+				<div class="sp-kpi warn"><div class="sp-kpi__label"><?php esc_html_e( 'Open', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['open'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s reachable', 'shopify-pulse-connector' ), number_format_i18n( $k['reachable_open'] ) ) ); ?></div></div>
+				<div class="sp-kpi info"><div class="sp-kpi__label"><?php esc_html_e( 'Pushed', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['pushed'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s pending', 'shopify-pulse-connector' ), number_format_i18n( $k['pending'] ) ) ); ?></div></div>
+				<div class="sp-kpi ok"><div class="sp-kpi__label"><?php esc_html_e( 'Recovered', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['recovered'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s rate', 'shopify-pulse-connector' ), number_format_i18n( $k['recovery_rate'] * 100, 1 ) . '%' ) ); ?></div></div>
+				<div class="sp-kpi err"><div class="sp-kpi__label"><?php esc_html_e( 'Cancelled / Fake', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['cancelled'] + $k['fake'] ) ); ?></div></div>
+				<div class="sp-kpi"><div class="sp-kpi__label"><?php esc_html_e( 'Open value', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num sp-mono"><?php echo esc_html( $this->money( $k['open_value'], $currency ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( 'avg %s', 'shopify-pulse-connector' ), $this->money( $k['avg_open'], $currency ) ) ); ?></div></div>
 			</div>
 
 			<?php if ( ! empty( $k['funnel'] ) ) : ?>
@@ -326,9 +649,9 @@ class Shopify_Pulse_Abandoned_Admin {
 				<div class="sp-panel__head"><?php esc_html_e( 'Where open carts drop off', 'shopify-pulse-connector' ); ?></div>
 				<div class="sp-panel__body">
 					<div class="sp-funnel">
-						<?php foreach ( $k['funnel'] as $f ) : $n = (int) $f['n']; $pct = $max_step > 0 ? round( $n / $max_step * 100 ) : 0; ?>
+						<?php foreach ( $k['funnel'] as $ff ) : $n = (int) $ff['n']; $pct = $max_step > 0 ? round( $n / $max_step * 100 ) : 0; ?>
 							<div class="sp-funnel__row">
-								<span><?php echo esc_html( ucfirst( (string) $f['step'] ) ); ?></span>
+								<span><?php echo esc_html( ucfirst( (string) $ff['step'] ) ); ?></span>
 								<span class="sp-funnel__track"><span class="sp-funnel__bar" style="width:<?php echo esc_attr( max( 3, $pct ) ); ?>%"></span></span>
 								<span class="sp-mono" style="text-align:right;"><?php echo esc_html( number_format_i18n( $n ) ); ?></span>
 							</div>
@@ -340,27 +663,45 @@ class Shopify_Pulse_Abandoned_Admin {
 
 			<div class="sp-panel">
 				<div class="sp-panel__head">
-					<span><?php esc_html_e( 'Carts', 'shopify-pulse-connector' ); ?></span>
 					<span class="sp-filters">
 						<?php
 						$labels = array(
-							'open'        => __( 'Open', 'shopify-pulse-connector' ),
+							'active'      => __( 'Active', 'shopify-pulse-connector' ),
 							'pending'     => __( 'Pending', 'shopify-pulse-connector' ),
 							'recovered'   => __( 'Recovered', 'shopify-pulse-connector' ),
+							'cancelled'   => __( 'Cancelled', 'shopify-pulse-connector' ),
+							'fake'        => __( 'Fake', 'shopify-pulse-connector' ),
 							'unreachable' => __( 'Unreachable', 'shopify-pulse-connector' ),
 							'all'         => __( 'All', 'shopify-pulse-connector' ),
 						);
 						foreach ( $labels as $key => $label ) :
 							$url = add_query_arg( array( 'page' => self::PAGE_SLUG, 'status' => $key ), admin_url( 'admin.php' ) );
 							?>
-							<a class="<?php echo $filter === $key ? 'on' : ''; ?>" href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $label ); ?></a>
+							<a class="<?php echo $f['status'] === $key ? 'on' : ''; ?>" href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $label ); ?></a>
 						<?php endforeach; ?>
 					</span>
+					<span id="sp-count" class="sp-dim"></span>
 				</div>
-				<div class="sp-panel__body" style="padding:0;">
-					<?php if ( empty( $rows ) ) : ?>
-						<div class="sp-empty"><?php esc_html_e( 'No carts match this filter.', 'shopify-pulse-connector' ); ?></div>
-					<?php else : ?>
+
+				<div class="sp-toolbar">
+					<div><label for="sp-search"><?php esc_html_e( 'Search', 'shopify-pulse-connector' ); ?></label>
+						<input type="search" id="sp-search" value="<?php echo esc_attr( $f['search'] ); ?>" placeholder="<?php esc_attr_e( 'name, phone, email, product…', 'shopify-pulse-connector' ); ?>" style="min-width:220px;" /></div>
+					<div><label for="sp-product"><?php esc_html_e( 'Product', 'shopify-pulse-connector' ); ?></label>
+						<select id="sp-product">
+							<option value="0"><?php esc_html_e( 'Any product', 'shopify-pulse-connector' ); ?></option>
+							<?php foreach ( $products as $pid => $label ) : ?>
+								<option value="<?php echo (int) $pid; ?>" <?php selected( $f['product'], $pid ); ?>><?php echo esc_html( wp_html_excerpt( $label, 48, '…' ) ); ?></option>
+							<?php endforeach; ?>
+						</select></div>
+					<div><label for="sp-from"><?php esc_html_e( 'From', 'shopify-pulse-connector' ); ?></label>
+						<input type="date" id="sp-from" value="<?php echo esc_attr( $f['from'] ); ?>" /></div>
+					<div><label for="sp-to"><?php esc_html_e( 'To', 'shopify-pulse-connector' ); ?></label>
+						<input type="date" id="sp-to" value="<?php echo esc_attr( $f['to'] ); ?>" /></div>
+					<div><button type="button" class="button" id="sp-clear"><?php esc_html_e( 'Clear', 'shopify-pulse-connector' ); ?></button></div>
+					<div><span class="spinner" id="sp-spin" style="float:none;margin:0;"></span></div>
+				</div>
+
+				<div style="overflow-x:auto;">
 					<table class="sp-tbl">
 						<thead>
 							<tr>
@@ -371,107 +712,148 @@ class Shopify_Pulse_Abandoned_Admin {
 								<th><?php esc_html_e( 'Step', 'shopify-pulse-connector' ); ?></th>
 								<th><?php esc_html_e( 'Status', 'shopify-pulse-connector' ); ?></th>
 								<th><?php esc_html_e( 'Updated', 'shopify-pulse-connector' ); ?></th>
-								<th style="text-align:right;"><?php esc_html_e( 'Action', 'shopify-pulse-connector' ); ?></th>
+								<th style="text-align:right;"><?php esc_html_e( 'Actions', 'shopify-pulse-connector' ); ?></th>
 							</tr>
 						</thead>
-						<tbody>
-							<?php
-							foreach ( $rows as $row ) :
-								$lines = json_decode( (string) $row->cart_json, true );
-								$lines = is_array( $lines ) ? $lines : array();
-								$count = 0;
-								foreach ( $lines as $l ) {
-									$count += isset( $l['qty'] ) ? (int) $l['qty'] : 1;
-								}
-								$first = ! empty( $lines[0]['title'] ) ? (string) $lines[0]['title'] : '';
-								$addr  = json_decode( (string) $row->address_json, true );
-								$addr  = is_array( $addr ) ? $addr : array();
-								$addr_bits = array_filter( array(
-									isset( $addr['address1'] ) ? $addr['address1'] : '',
-									isset( $addr['city'] ) ? $addr['city'] : '',
-									isset( $addr['province'] ) ? $addr['province'] : '',
-								) );
-								list( $status_key, $status_label, $status_tone ) = $this->row_status( $row );
-								$can_resync = ( 'recovered' !== $status_key && 'unreachable' !== $status_key );
-								?>
-								<tr data-key="<?php echo esc_attr( $row->session_key ); ?>">
-									<td>
-										<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
-										<div class="sp-contact">
-											<?php if ( $row->phone ) : ?><span>📞 <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
-											<?php if ( $row->email ) : ?><span>✉ <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
-											<?php if ( ! $row->phone && ! $row->email ) : ?><span><?php esc_html_e( 'no contact', 'shopify-pulse-connector' ); ?></span><?php endif; ?>
-										</div>
-									</td>
-									<td class="sp-contact" style="color:#1d2327;">
-										<?php echo $addr_bits ? esc_html( implode( ', ', $addr_bits ) ) : '<span style="color:#646970;">—</span>'; ?>
-									</td>
-									<td>
-										<div class="sp-mono"><?php echo esc_html( sprintf( _n( '%d item', '%d items', $count, 'shopify-pulse-connector' ), $count ) ); ?></div>
-										<?php if ( $first ) : ?><div class="sp-contact"><?php echo esc_html( wp_html_excerpt( $first, 42, '…' ) ); ?></div><?php endif; ?>
-									</td>
-									<td class="sp-mono"><?php echo esc_html( $this->money( $row->subtotal, $row->currency ? $row->currency : $currency ) ); ?></td>
-									<td><?php echo esc_html( $row->furthest_step ? ucfirst( (string) $row->furthest_step ) : '—' ); ?></td>
-									<td><span class="sp-badge <?php echo esc_attr( $status_tone ); ?>"><?php echo esc_html( $status_label ); ?></span></td>
-									<td class="sp-contact" style="color:#1d2327;"><?php echo esc_html( $row->updated_at ? human_time_diff( strtotime( $row->updated_at . ' UTC' ) ) . ' ' . __( 'ago', 'shopify-pulse-connector' ) : '—' ); ?></td>
-									<td style="text-align:right;">
-										<?php if ( $can_resync ) : ?>
-											<button type="button" class="button sp-resync-one" data-key="<?php echo esc_attr( $row->session_key ); ?>" <?php disabled( ! $active ); ?>><?php esc_html_e( 'Resync', 'shopify-pulse-connector' ); ?></button>
-										<?php else : ?>
-											<span class="sp-contact">—</span>
-										<?php endif; ?>
-									</td>
-								</tr>
-							<?php endforeach; ?>
+						<tbody id="sp-rows">
+							<?php echo $this->render_rows( $rows, $currency, $active ); // phpcs:ignore WordPress.Security.EscapeOutput ?>
 						</tbody>
 					</table>
-					<?php endif; ?>
 				</div>
 			</div>
+
+			<div id="sp-modal-root"></div>
 		</div>
 
 		<script>
 		( function () {
 			var nonce   = <?php echo wp_json_encode( wp_create_nonce( self::NONCE ) ); ?>;
-			var syncing = <?php echo wp_json_encode( __( 'Resyncing…', 'shopify-pulse-connector' ) ); ?>;
-			var failed  = <?php echo wp_json_encode( __( 'Failed', 'shopify-pulse-connector' ) ); ?>;
-			function post( body ) {
-				return fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: body } ).then( function ( r ) { return r.json(); } );
+			var strings = <?php echo wp_json_encode( array(
+				'syncing'   => __( 'Resyncing…', 'shopify-pulse-connector' ),
+				'failed'    => __( 'Failed', 'shopify-pulse-connector' ),
+				'confirmDel'=> __( 'Delete this cart from the worklist? (Does not affect the platform.)', 'shopify-pulse-connector' ),
+				'confirmFake'=> __( 'Mark this cart as fake?', 'shopify-pulse-connector' ),
+				'working'   => __( 'Working…', 'shopify-pulse-connector' ),
+				'count'     => __( '%d shown', 'shopify-pulse-connector' ),
+			) ); ?>;
+			function post( data ) {
+				data.append( 'nonce', nonce );
+				return fetch( ajaxurl, { method: 'POST', credentials: 'same-origin', body: data } ).then( function ( r ) { return r.json(); } );
 			}
-			Array.prototype.forEach.call( document.querySelectorAll( '.sp-resync-one' ), function ( btn ) {
-				btn.addEventListener( 'click', function () {
-					var original = btn.textContent;
-					btn.disabled = true; btn.textContent = syncing;
-					var data = new FormData();
-					data.append( 'action', 'shopify_pulse_abandoned_resync' );
-					data.append( 'nonce', nonce );
-					data.append( 'scope', 'one' );
-					data.append( 'session_key', btn.getAttribute( 'data-key' ) );
-					post( data ).then( function ( j ) {
-						if ( j && j.success ) {
-							btn.textContent = '✓ ' + ( j.data && j.data.message ? j.data.message : 'Done' );
-							btn.classList.add( 'button-primary' );
-						} else {
-							btn.disabled = false; btn.textContent = original;
-							alert( ( j && j.data && j.data.message ) ? j.data.message : failed );
-						}
-					} ).catch( function () { btn.disabled = false; btn.textContent = original; alert( failed ); } );
+			function fd( action, extra ) {
+				var d = new FormData();
+				d.append( 'action', action );
+				for ( var k in ( extra || {} ) ) { d.append( k, extra[ k ] ); }
+				return d;
+			}
+
+			// ── AJAX search + filters ──────────────────────────────────────
+			var search = document.getElementById( 'sp-search' );
+			var product = document.getElementById( 'sp-product' );
+			var from = document.getElementById( 'sp-from' );
+			var to = document.getElementById( 'sp-to' );
+			var spin = document.getElementById( 'sp-spin' );
+			var rowsBody = document.getElementById( 'sp-rows' );
+			var countEl = document.getElementById( 'sp-count' );
+			var statusFilter = <?php echo wp_json_encode( $f['status'] ); ?>;
+			var t = null;
+			function runQuery() {
+				spin.classList.add( 'is-active' );
+				post( fd( 'shopify_pulse_abandoned_query', {
+					status: statusFilter,
+					search: search.value,
+					product: product.value,
+					from: from.value,
+					to: to.value
+				} ) ).then( function ( j ) {
+					spin.classList.remove( 'is-active' );
+					if ( j && j.success ) {
+						rowsBody.innerHTML = j.data.html;
+						countEl.textContent = strings.count.replace( '%d', j.data.count );
+						bindRows();
+					}
+				} ).catch( function () { spin.classList.remove( 'is-active' ); } );
+			}
+			function debounced() { clearTimeout( t ); t = setTimeout( runQuery, 300 ); }
+			if ( search ) { search.addEventListener( 'input', debounced ); }
+			[ product, from, to ].forEach( function ( el ) { if ( el ) { el.addEventListener( 'change', runQuery ); } } );
+			var clear = document.getElementById( 'sp-clear' );
+			if ( clear ) { clear.addEventListener( 'click', function () { search.value=''; product.value='0'; from.value=''; to.value=''; runQuery(); } ); }
+
+			// ── Row actions (delegated) ────────────────────────────────────
+			function bindRows() {
+				Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-check-courier' ), function ( btn ) {
+					btn.addEventListener( 'click', function () {
+						var wrap = btn.closest( '.sp-courier' );
+						var phone = wrap ? wrap.getAttribute( 'data-phone' ) : '';
+						btn.disabled = true; btn.textContent = '…';
+						post( fd( 'shopify_pulse_abandoned_courier', { phone: phone } ) ).then( function ( j ) {
+							if ( j && j.success && j.data.successRatio !== null && j.data.successRatio !== undefined ) {
+								var r = Math.round( j.data.successRatio );
+								var cls = r >= 80 ? 'g' : ( r >= 60 ? 'a' : 'r' );
+								wrap.innerHTML = '<span class="sp-ratio ' + cls + '">' + r + '%' + ( j.data.totalParcel != null ? ' · ' + j.data.totalParcel : '' ) + '</span>';
+							} else {
+								btn.disabled = false; btn.innerHTML = '<span class="dashicons dashicons-search"></span> ' + ( ( j && j.data && j.data.message ) ? j.data.message : strings.failed );
+							}
+						} ).catch( function () { btn.disabled = false; btn.textContent = strings.failed; } );
+					} );
 				} );
-			} );
+				Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-act' ), function ( btn ) {
+					btn.addEventListener( 'click', function () {
+						var tr = btn.closest( 'tr' );
+						var key = tr ? tr.getAttribute( 'data-key' ) : '';
+						var op = btn.getAttribute( 'data-op' );
+						if ( op === 'details' ) { openDetails( key ); return; }
+						if ( op === 'delete' && ! window.confirm( strings.confirmDel ) ) { return; }
+						if ( op === 'fake' && ! window.confirm( strings.confirmFake ) ) { return; }
+						if ( op === 'resync' ) {
+							btn.disabled = true; var orig = btn.textContent; btn.textContent = strings.syncing;
+							post( fd( 'shopify_pulse_abandoned_resync', { scope: 'one', session_key: key } ) ).then( function ( j ) {
+								btn.textContent = ( j && j.success ) ? ( '✓ ' + ( j.data.message || '' ) ) : ( ( j && j.data && j.data.message ) || strings.failed );
+								if ( ! ( j && j.success ) ) { btn.disabled = false; btn.textContent = orig; alert( ( j && j.data && j.data.message ) || strings.failed ); }
+							} ).catch( function () { btn.disabled = false; btn.textContent = orig; } );
+							return;
+						}
+						btn.disabled = true; var original = btn.textContent; btn.textContent = strings.working;
+						post( fd( 'shopify_pulse_abandoned_action', { op: op, session_key: key } ) ).then( function ( j ) {
+							if ( j && j.success ) {
+								if ( j.data.removeRow && tr ) { tr.parentNode.removeChild( tr ); return; }
+								if ( j.data.orderUrl ) { window.location = j.data.orderUrl; return; }
+								if ( j.data.reload ) { runQuery(); return; }
+							} else {
+								btn.disabled = false; btn.textContent = original;
+								alert( ( j && j.data && j.data.message ) || strings.failed );
+							}
+						} ).catch( function () { btn.disabled = false; btn.textContent = original; alert( strings.failed ); } );
+					} );
+				} );
+			}
+			function openDetails( key ) {
+				var root = document.getElementById( 'sp-modal-root' );
+				root.innerHTML = '<div class="sp-modal-bg"><div class="sp-modal"><button class="sp-x">×</button><p>' + strings.working + '</p></div></div>';
+				var bg = root.querySelector( '.sp-modal-bg' );
+				function close() { root.innerHTML = ''; }
+				bg.addEventListener( 'click', function ( e ) { if ( e.target === bg ) { close(); } } );
+				root.querySelector( '.sp-x' ).addEventListener( 'click', close );
+				post( fd( 'shopify_pulse_abandoned_details', { session_key: key } ) ).then( function ( j ) {
+					var box = root.querySelector( '.sp-modal' );
+					if ( j && j.success ) { box.innerHTML = '<button class="sp-x">×</button>' + j.data.html; box.querySelector( '.sp-x' ).addEventListener( 'click', close ); }
+					else { box.innerHTML = '<button class="sp-x">×</button><p>' + ( ( j && j.data && j.data.message ) || strings.failed ) + '</p>'; box.querySelector( '.sp-x' ).addEventListener( 'click', close ); }
+				} );
+			}
+			bindRows();
+
+			// ── Resync all ─────────────────────────────────────────────────
 			var all = document.getElementById( 'sp-resync-all' );
 			var msg = document.getElementById( 'sp-resync-msg' );
 			if ( all ) {
 				all.addEventListener( 'click', function () {
-					all.disabled = true; msg.textContent = syncing; msg.style.color = '#555';
-					var data = new FormData();
-					data.append( 'action', 'shopify_pulse_abandoned_resync' );
-					data.append( 'nonce', nonce );
-					data.append( 'scope', 'all' );
-					post( data ).then( function ( j ) {
-						msg.textContent = ( j && j.data && j.data.message ) ? j.data.message : failed;
+					all.disabled = true; msg.textContent = strings.syncing; msg.style.color = '#555';
+					post( fd( 'shopify_pulse_abandoned_resync', { scope: 'all' } ) ).then( function ( j ) {
+						msg.textContent = ( j && j.data && j.data.message ) ? j.data.message : strings.failed;
 						msg.style.color = ( j && j.success ) ? '#146c43' : '#b32d2e';
 						if ( j && j.success ) { setTimeout( function () { location.reload(); }, 900 ); }
-					} ).catch( function () { all.disabled = false; msg.textContent = failed; msg.style.color = '#b32d2e'; } );
+					} ).catch( function () { all.disabled = false; msg.textContent = strings.failed; msg.style.color = '#b32d2e'; } );
 				} );
 			}
 		} )();
