@@ -149,8 +149,10 @@ class Shopify_Pulse_Install {
 
 		$sql = "CREATE TABLE {$table} (
   session_key varchar(64) NOT NULL,
+  customer_name varchar(191) DEFAULT NULL,
   email varchar(191) DEFAULT NULL,
   phone varchar(64) DEFAULT NULL,
+  address_json longtext,
   cart_json longtext,
   subtotal decimal(18,4) NOT NULL DEFAULT 0,
   currency varchar(8) DEFAULT NULL,
