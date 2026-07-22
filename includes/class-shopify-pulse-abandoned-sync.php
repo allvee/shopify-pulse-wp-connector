@@ -188,6 +188,105 @@ class Shopify_Pulse_Abandoned_Sync {
 		}
 	}
 
+	/**
+	 * Capture from the block (Store API) checkout beacon. WooCommerce Blocks has
+	 * no server hook that fires while the shopper fills the form — only at order
+	 * placement — so the storefront JS posts the contact + address + cart it read
+	 * from the checkout data store here. Mirrors {@see capture()}'s DB write,
+	 * keyed by the browser-stable beacon key, and honours the same contact gate.
+	 *
+	 * @param array $data Decoded beacon payload.
+	 * @return bool True when a row was written.
+	 */
+	public function capture_beacon( array $data ) {
+		if ( ! $this->settings->get( 'enable_abandoned' ) ) {
+			return false;
+		}
+		$key = isset( $data['key'] ) ? preg_replace( '/[^A-Za-z0-9_\-]/', '', (string) $data['key'] ) : '';
+		if ( '' === $key ) {
+			return false;
+		}
+		$session_key = 'blk_' . substr( $key, 0, 60 );
+
+		$email = isset( $data['email'] ) ? sanitize_email( (string) $data['email'] ) : '';
+		$phone = isset( $data['phone'] ) ? sanitize_text_field( (string) $data['phone'] ) : '';
+		// An incomplete order needs a way to reach the shopper (same gate as capture()).
+		if ( '' === $email && '' === $phone ) {
+			return false;
+		}
+
+		$lines = array();
+		foreach ( (array) ( isset( $data['lines'] ) ? $data['lines'] : array() ) as $l ) {
+			if ( ! is_array( $l ) ) {
+				continue;
+			}
+			$lines[] = array(
+				'product_id' => isset( $l['product_id'] ) ? (int) $l['product_id'] : null,
+				'title'      => isset( $l['title'] ) ? sanitize_text_field( (string) $l['title'] ) : __( 'Item', 'shopify-pulse-connector' ),
+				'sku'        => ! empty( $l['sku'] ) ? sanitize_text_field( (string) $l['sku'] ) : null,
+				'qty'        => max( 1, isset( $l['qty'] ) ? (int) $l['qty'] : 1 ),
+				'price'      => isset( $l['price'] ) ? (float) $l['price'] : 0.0,
+			);
+		}
+		if ( empty( $lines ) ) {
+			return false;
+		}
+
+		$name = trim(
+			( isset( $data['first_name'] ) ? sanitize_text_field( (string) $data['first_name'] ) : '' ) . ' ' .
+			( isset( $data['last_name'] ) ? sanitize_text_field( (string) $data['last_name'] ) : '' )
+		);
+		$field = function ( $k ) use ( $data ) {
+			return isset( $data[ $k ] ) ? sanitize_text_field( (string) $data[ $k ] ) : '';
+		};
+		$address = array_filter(
+			array(
+				'name'     => $name,
+				'phone'    => $phone,
+				'email'    => $email,
+				'address1' => $field( 'address_1' ),
+				'address2' => $field( 'address_2' ),
+				'city'     => $field( 'city' ),
+				'province' => $field( 'state' ),
+				'zip'      => $field( 'postcode' ),
+				'country'  => $field( 'country' ),
+			),
+			function ( $v ) { return '' !== $v && null !== $v; }
+		);
+
+		$has_addr = ! empty( $address['address1'] );
+		$subtotal = isset( $data['subtotal'] ) ? max( 0, (float) $data['subtotal'] ) : 0.0;
+		$currency = isset( $data['currency'] ) ? substr( sanitize_text_field( (string) $data['currency'] ), 0, 8 ) : get_woocommerce_currency();
+		$now      = current_time( 'mysql', true );
+
+		global $wpdb;
+		$table  = self::table_name();
+		$exists = $wpdb->get_var( $wpdb->prepare( "SELECT session_key FROM {$table} WHERE session_key = %s", $session_key ) ); // phpcs:ignore WordPress.DB
+		// No `status` key: insert defaults to 'active', updates preserve any
+		// operator disposition — exactly like capture().
+		$shared = array(
+			'customer_name' => $name ? $name : null,
+			'email'         => $email ? $email : null,
+			'phone'         => $phone ? $phone : null,
+			'address_json'  => $address ? wp_json_encode( $address ) : null,
+			'cart_json'     => wp_json_encode( $lines ),
+			'subtotal'      => $subtotal,
+			'currency'      => $currency ? $currency : 'BDT',
+			'furthest_step' => $has_addr ? 'address' : 'contact',
+			'synced'        => 0,
+			'updated_at'    => $now,
+		);
+		if ( $exists ) {
+			$wpdb->update( $table, $shared, array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
+		} else {
+			$shared['session_key'] = $session_key;
+			$shared['created_at']  = $now;
+			$wpdb->insert( $table, $shared ); // phpcs:ignore WordPress.DB
+		}
+		$this->schedule_instant_push( $session_key );
+		return true;
+	}
+
 	private function current_email() {
 		if ( function_exists( 'WC' ) && WC()->customer && WC()->customer->get_billing_email() ) {
 			return WC()->customer->get_billing_email();
