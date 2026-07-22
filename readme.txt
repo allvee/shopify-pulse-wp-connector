@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.4.1 =
+* Fix: carts are only captured once the shopper has a contact (email or phone) — an incomplete order needs a way to be reached. This stops the worklist filling with blank add-to-cart rows that have no customer info. Existing no-contact rows are hidden from the worklist and analytics (and garbage-collected on the normal 30-day schedule).
+* Courier ratio check now shows a clear "No data" (with a tooltip) when the platform has no BDCourier history for the number — or when BDCourier isn't configured for the store on the platform. Note: the BDCourier API key lives on the platform (per store), not in the plugin; the plugin reads the ratio through the connection.
 
 = 1.4.0 =
 * Abandoned carts screen is now a full worklist matching the platform: per-row Check courier ratio (bdcourier delivery-success %), Convert to a WooCommerce order, Cancel, mark Fake, View details, Delete, and Sync/Resync.

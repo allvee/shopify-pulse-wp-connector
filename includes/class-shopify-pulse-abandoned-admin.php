@@ -83,6 +83,8 @@ class Shopify_Pulse_Abandoned_Admin {
 		$t         = Shopify_Pulse_Abandoned_Sync::table_name();
 		$reachable = $this->reachable_sql();
 
+		// All analytics are scoped to contactful carts — the same population the
+		// worklist shows — so the KPIs and the table always agree.
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
 			"SELECT
 				COUNT(*) AS total,
@@ -90,20 +92,18 @@ class Shopify_Pulse_Abandoned_Admin {
 				SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
 				SUM(CASE WHEN status = 'fake' THEN 1 ELSE 0 END) AS fake,
 				SUM(CASE WHEN status = 'active' AND synced = 1 THEN 1 ELSE 0 END) AS pushed,
-				SUM(CASE WHEN status = 'active' AND synced = 0 AND {$reachable} THEN 1 ELSE 0 END) AS pending,
-				SUM(CASE WHEN status = 'active' AND NOT {$reachable} THEN 1 ELSE 0 END) AS unreachable,
-				SUM(CASE WHEN status = 'active' AND {$reachable} THEN 1 ELSE 0 END) AS reachable_open,
+				SUM(CASE WHEN status = 'active' AND synced = 0 THEN 1 ELSE 0 END) AS pending,
 				SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS open_count,
 				SUM(CASE WHEN status = 'active' THEN subtotal ELSE 0 END) AS open_value,
 				SUM(CASE WHEN status = 'converted' THEN subtotal ELSE 0 END) AS recovered_value
-			FROM {$t}",
+			FROM {$t} WHERE {$reachable}",
 			ARRAY_A
 		);
 		$row = is_array( $row ) ? $row : array();
 
 		$funnel = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			"SELECT COALESCE(NULLIF(furthest_step, ''), 'unknown') AS step, COUNT(*) AS n
-			 FROM {$t} WHERE status = 'active' GROUP BY step ORDER BY n DESC",
+			 FROM {$t} WHERE status = 'active' AND {$reachable} GROUP BY step ORDER BY n DESC",
 			ARRAY_A
 		);
 
@@ -120,8 +120,6 @@ class Shopify_Pulse_Abandoned_Admin {
 			'fake'            => (int) ( $row['fake'] ?? 0 ),
 			'pushed'          => (int) ( $row['pushed'] ?? 0 ),
 			'pending'         => (int) ( $row['pending'] ?? 0 ),
-			'unreachable'     => (int) ( $row['unreachable'] ?? 0 ),
-			'reachable_open'  => (int) ( $row['reachable_open'] ?? 0 ),
 			'open_value'      => $open_val,
 			'recovered_value' => (float) ( $row['recovered_value'] ?? 0 ),
 			'avg_open'        => $open > 0 ? $open_val / $open : 0,
@@ -138,7 +136,9 @@ class Shopify_Pulse_Abandoned_Admin {
 	 */
 	private function build_where( $f ) {
 		$reachable = $this->reachable_sql();
-		$clauses   = array( '1=1' );
+		// Base requirement: a worklist entry is an incomplete order, so it must
+		// have contact. No-contact rows (legacy captures) never show.
+		$clauses   = array( $reachable );
 		$args      = array();
 
 		switch ( isset( $f['status'] ) ? $f['status'] : 'active' ) {
@@ -146,10 +146,7 @@ class Shopify_Pulse_Abandoned_Admin {
 				$clauses[] = "status = 'active'";
 				break;
 			case 'pending':
-				$clauses[] = "status = 'active' AND synced = 0 AND {$reachable}";
-				break;
-			case 'unreachable':
-				$clauses[] = "status = 'active' AND NOT {$reachable}";
+				$clauses[] = "status = 'active' AND synced = 0";
 				break;
 			case 'recovered':
 				$clauses[] = "status = 'converted'";
@@ -609,7 +606,7 @@ class Shopify_Pulse_Abandoned_Admin {
 			'from'    => isset( $_GET['from'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_GET['from'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
 			'to'      => isset( $_GET['to'] ) ? preg_replace( '/[^0-9\-]/', '', wp_unslash( $_GET['to'] ) ) : '', // phpcs:ignore WordPress.Security.NonceVerification
 		);
-		$allowed = array( 'all', 'active', 'pending', 'recovered', 'cancelled', 'fake', 'unreachable' );
+		$allowed = array( 'all', 'active', 'pending', 'recovered', 'cancelled', 'fake' );
 		if ( ! in_array( $f['status'], $allowed, true ) ) {
 			$f['status'] = 'active';
 		}
@@ -704,7 +701,7 @@ class Shopify_Pulse_Abandoned_Admin {
 
 			<div class="sp-kpis">
 				<div class="sp-kpi"><div class="sp-kpi__label"><?php esc_html_e( 'Total', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['total'] ) ); ?></div></div>
-				<div class="sp-kpi warn"><div class="sp-kpi__label"><?php esc_html_e( 'Open', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['open'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s reachable', 'shopify-pulse-connector' ), number_format_i18n( $k['reachable_open'] ) ) ); ?></div></div>
+				<div class="sp-kpi warn"><div class="sp-kpi__label"><?php esc_html_e( 'Open', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['open'] ) ); ?></div><div class="sp-kpi__sub"><?php esc_html_e( 'incomplete orders', 'shopify-pulse-connector' ); ?></div></div>
 				<div class="sp-kpi info"><div class="sp-kpi__label"><?php esc_html_e( 'Pushed', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['pushed'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s pending', 'shopify-pulse-connector' ), number_format_i18n( $k['pending'] ) ) ); ?></div></div>
 				<div class="sp-kpi ok"><div class="sp-kpi__label"><?php esc_html_e( 'Recovered', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['recovered'] ) ); ?></div><div class="sp-kpi__sub"><?php echo esc_html( sprintf( __( '%s rate', 'shopify-pulse-connector' ), number_format_i18n( $k['recovery_rate'] * 100, 1 ) . '%' ) ); ?></div></div>
 				<div class="sp-kpi err"><div class="sp-kpi__label"><?php esc_html_e( 'Cancelled / Fake', 'shopify-pulse-connector' ); ?></div><div class="sp-kpi__num"><?php echo esc_html( number_format_i18n( $k['cancelled'] + $k['fake'] ) ); ?></div></div>
@@ -738,7 +735,6 @@ class Shopify_Pulse_Abandoned_Admin {
 							'recovered'   => __( 'Recovered', 'shopify-pulse-connector' ),
 							'cancelled'   => __( 'Cancelled', 'shopify-pulse-connector' ),
 							'fake'        => __( 'Fake', 'shopify-pulse-connector' ),
-							'unreachable' => __( 'Unreachable', 'shopify-pulse-connector' ),
 							'all'         => __( 'All', 'shopify-pulse-connector' ),
 						);
 						foreach ( $labels as $key => $label ) :
@@ -821,6 +817,8 @@ class Shopify_Pulse_Abandoned_Admin {
 				'pickOp'     => __( 'Choose a bulk action first.', 'shopify-pulse-connector' ),
 				'pickRows'   => __( 'Select at least one cart.', 'shopify-pulse-connector' ),
 				'confirmBulk'=> __( 'Apply "%1$s" to %2$d selected cart(s)?', 'shopify-pulse-connector' ),
+				'noRatio'    => __( 'No data', 'shopify-pulse-connector' ),
+				'noRatioHint'=> __( 'No BDCourier history for this number, or BDCourier is not configured for this store on the platform.', 'shopify-pulse-connector' ),
 			) ); ?>;
 			function post( data ) {
 				data.append( 'nonce', nonce );
@@ -885,6 +883,11 @@ class Shopify_Pulse_Abandoned_Admin {
 								var r = Math.round( j.data.successRatio );
 								var cls = r >= 80 ? 'g' : ( r >= 60 ? 'a' : 'r' );
 								wrap.innerHTML = '<span class="sp-ratio ' + cls + '">' + r + '%' + ( j.data.totalParcel != null ? ' · ' + j.data.totalParcel : '' ) + '</span>';
+							} else if ( j && j.success ) {
+								// Reached the platform, but it has no ratio (unknown number, or
+								// BDCourier isn't set up for this store there — the key lives on
+								// the platform, not the plugin).
+								wrap.innerHTML = '<span class="sp-dim" title="' + strings.noRatioHint + '">' + strings.noRatio + '</span>';
 							} else {
 								btn.disabled = false; btn.innerHTML = '<span class="dashicons dashicons-search"></span> ' + ( ( j && j.data && j.data.message ) ? j.data.message : strings.failed );
 							}
