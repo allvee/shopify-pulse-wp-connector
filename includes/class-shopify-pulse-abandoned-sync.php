@@ -444,11 +444,16 @@ class Shopify_Pulse_Abandoned_Sync {
 		return function_exists( 'mb_substr' ) ? mb_substr( $s, 0, $len ) : substr( $s, 0, $len );
 	}
 
-	/** Normalize to a valid, length-bounded email, or '' — the platform rejects a
-	 *  malformed address (IsEmail, MaxLength 255), which would fail the push. */
+	/**
+	 * Length-bound the email, keeping whatever the shopper actually entered.
+	 * Email is NOT mandatory (a phone-only cart is the BD norm) — but if it's
+	 * there, catch it. The platform stores it as a plain string (no format
+	 * check), so we don't reject valid-but-unusual addresses; we only drop a
+	 * blank or an obvious non-email (no "@").
+	 */
 	public function clean_email( $email ) {
 		$email = sanitize_email( (string) $email );
-		return ( '' !== $email && is_email( $email ) ) ? $this->clamp( $email, 255 ) : '';
+		return ( '' !== $email && false !== strpos( $email, '@' ) ) ? $this->clamp( $email, 255 ) : '';
 	}
 
 	/** Normalize a phone to `+`?digits, clamped to the platform's 32-char limit. */
