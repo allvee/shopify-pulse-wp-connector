@@ -50,6 +50,9 @@ class Shopify_Pulse_Settings {
 			'brand_sync_dir'        => 'push',
 			'enable_product_sync'   => 0,
 			'product_sync_dir'      => 'both',
+			// Auto-generate a unique SKU on WooCommerce products/variants that
+			// lack one at sync time, so the platform can map them by SKU.
+			'auto_sku'              => 1,
 			// Legacy bundled switch — kept only so a pre-split install can
 			// inherit its value into the three keys above (see all()).
 			'enable_catalog_sync'   => 0,
@@ -222,6 +225,16 @@ class Shopify_Pulse_Settings {
 			self::menu_icon(),
 			58
 		);
+		// Re-title the auto-created first submenu to "Settings" with an icon
+		// (same slug replaces the default "Shopify Pulse" entry).
+		add_submenu_page(
+			self::PAGE_SLUG,
+			__( 'Settings', 'shopify-pulse-connector' ),
+			'<span class="dashicons dashicons-admin-generic" style="font-size:17px;width:17px;height:17px;vertical-align:-3px;"></span> ' . __( 'Settings', 'shopify-pulse-connector' ),
+			self::CAPABILITY,
+			self::PAGE_SLUG,
+			array( $this, 'render_page' )
+		);
 	}
 
 	/**
@@ -285,6 +298,7 @@ class Shopify_Pulse_Settings {
 		$clean['brand_sync_dir']        = $dir_of( 'brand_sync_dir', 'push' );
 		$clean['enable_product_sync']   = empty( $raw['enable_product_sync'] ) ? 0 : 1;
 		$clean['product_sync_dir']      = $dir_of( 'product_sync_dir', 'both' );
+		$clean['auto_sku']              = empty( $raw['auto_sku'] ) ? 0 : 1;
 		// Mirror into the legacy bundled keys so any not-yet-updated reader (and
 		// the migration guard in all()) still resolves a sane value.
 		$clean['enable_catalog_sync']   = ( $clean['enable_category_sync'] || $clean['enable_brand_sync'] || $clean['enable_product_sync'] ) ? 1 : 0;
@@ -681,6 +695,10 @@ class Shopify_Pulse_Settings {
 									<option value="pull" <?php selected( $s['product_sync_dir'], 'pull' ); ?>><?php esc_html_e( 'Platform → WooCommerce', 'shopify-pulse-connector' ); ?></option>
 								</select>
 								<p class="description"><?php esc_html_e( 'Products + variants, mapped to existing platform products by SKU/handle. On pull, a product’s categories + brand are linked too. Needs products.read + products.write.', 'shopify-pulse-connector' ); ?></p>
+							</div>
+							<div class="sp-field">
+								<label class="sp-check"><input type="checkbox" name="sp[auto_sku]" value="1" <?php checked( $s['auto_sku'] ); ?> /> <strong><?php esc_html_e( 'Auto-generate missing SKUs', 'shopify-pulse-connector' ); ?></strong></label>
+								<p class="description"><?php esc_html_e( 'A product/variant with no SKU gets a unique one (SP-<id>) written to WooCommerce at sync time, so the platform can map it. Turn off if you manage SKUs yourself.', 'shopify-pulse-connector' ); ?></p>
 							</div>
 						</div>
 					</div>
