@@ -54,6 +54,102 @@ class Shopify_Pulse_Fraud {
 			add_action( 'woocommerce_checkout_order_processed', array( $this, 'apply_to_order' ), 5, 1 );
 			add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'apply_to_order_obj' ), 5, 1 );
 		}
+		// Modern block popup on classic checkout + its stash-reader endpoint.
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_guard' ), 20 );
+		add_action( 'wp_ajax_shopify_pulse_guard', array( $this, 'ajax_guard' ) );
+		add_action( 'wp_ajax_nopriv_shopify_pulse_guard', array( $this, 'ajax_guard' ) );
+	}
+
+	/** Load the checkout-guard modal on the (classic) checkout page. */
+	public function enqueue_guard() {
+		if ( is_admin() || ! function_exists( 'is_checkout' ) || ! is_checkout() ) {
+			return;
+		}
+		wp_enqueue_script( 'sp-checkout-guard', SHOPIFY_PULSE_URL . 'assets/js/sp-checkout-guard.js', array( 'jquery' ), SHOPIFY_PULSE_VERSION, true );
+		$c = $this->support_contact();
+		wp_localize_script(
+			'sp-checkout-guard',
+			'SPGuard',
+			array(
+				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+				'nonce'    => wp_create_nonce( 'sp_guard' ),
+				'phone'    => $c['phone'],
+				'whatsapp' => $c['whatsapp'],
+				'i18n'     => array(
+					'title'   => __( 'We can’t place this order', 'shopify-pulse-connector' ),
+					'callBtn' => __( 'Call', 'shopify-pulse-connector' ),
+					'waBtn'   => __( 'WhatsApp us', 'shopify-pulse-connector' ),
+					'close'   => __( 'Close', 'shopify-pulse-connector' ),
+					'help'    => __( 'Need help completing your order? Reach us:', 'shopify-pulse-connector' ),
+				),
+			)
+		);
+	}
+
+	/** Return the last checkout block stashed for this session (and clear it). */
+	public function ajax_guard() {
+		check_ajax_referer( 'sp_guard', 'nonce' );
+		$block = null;
+		if ( function_exists( 'WC' ) && WC()->session ) {
+			$block = WC()->session->get( 'sp_guard_block' );
+			if ( $block ) {
+				WC()->session->set( 'sp_guard_block', null );
+			}
+		}
+		if ( is_array( $block ) && ! empty( $block['message'] ) ) {
+			wp_send_json_success( $block );
+		}
+		wp_send_json_error();
+	}
+
+	/** Stash a block for the checkout-guard modal to pick up. */
+	private function stash_block( $type, $title, $message ) {
+		if ( function_exists( 'WC' ) && WC()->session ) {
+			WC()->session->set( 'sp_guard_block', array( 'type' => $type, 'title' => $title, 'message' => wp_strip_all_tags( (string) $message ) ) );
+		}
+	}
+
+	/**
+	 * Resolve the support contact shown on a block: the plugin's explicit
+	 * Support phone / WhatsApp settings, falling back to the connected tenant's
+	 * contact number (cached from the last "Verify connection").
+	 *
+	 * @return array{phone:string,whatsapp:string}
+	 */
+	private function support_contact() {
+		$phone = trim( (string) $this->settings->get( 'support_phone' ) );
+		$wa    = trim( (string) $this->settings->get( 'support_whatsapp' ) );
+		if ( '' === $phone || '' === $wa ) {
+			$status = get_option( 'shopify_pulse_status', array() );
+			$store  = ( is_array( $status ) && isset( $status['store'] ) && is_array( $status['store'] ) ) ? $status['store'] : array();
+			$tenant = ! empty( $store['contactPhone'] ) ? (string) $store['contactPhone'] : '';
+			if ( '' === $phone ) {
+				$phone = $tenant;
+			}
+			if ( '' === $wa ) {
+				$wa = $tenant;
+			}
+		}
+		return array(
+			'phone'    => $phone,
+			// wa.me wants digits only (country code, no +/spaces).
+			'whatsapp' => $wa ? preg_replace( '/\D+/', '', $wa ) : '',
+		);
+	}
+
+	/** Friendly title for a fraud verdict, by layer. */
+	private function block_title( $verdict ) {
+		$layer = isset( $verdict['layer'] ) ? strtolower( (string) $verdict['layer'] ) : '';
+		if ( in_array( $layer, array( '1', 'contact', 'phone', 'name', 'address', 'heuristic' ), true ) ) {
+			return __( 'Your contact details could not be verified', 'shopify-pulse-connector' );
+		}
+		if ( in_array( $layer, array( '2', 'ip', 'velocity' ), true ) ) {
+			return __( 'Too many attempts — please try again later', 'shopify-pulse-connector' );
+		}
+		if ( in_array( $layer, array( '3', 'courier', 'delivery' ), true ) ) {
+			return __( 'This order can’t be delivered right now', 'shopify-pulse-connector' );
+		}
+		return __( 'We can’t place this order', 'shopify-pulse-connector' );
 	}
 
 	/** Whether the operator has armed the courier delivery-ratio gate. */
@@ -78,6 +174,7 @@ class Shopify_Pulse_Fraud {
 		// and runs even when the full fraud screen is disabled.
 		$courier_msg = $this->courier_block_message( $phone );
 		if ( $courier_msg ) {
+			$this->stash_block( 'courier', __( 'This order can’t be delivered right now', 'shopify-pulse-connector' ), $courier_msg );
 			$errors->add( 'sp_courier', $courier_msg );
 			return;
 		}
@@ -92,6 +189,7 @@ class Shopify_Pulse_Fraud {
 
 		$action = $this->settings->get( 'fraud_action' );
 		if ( 'block' === $action ) {
+			$this->stash_block( 'fraud', $this->block_title( $verdict ), $this->message( $verdict ) );
 			$errors->add( 'sp_fraud', $this->message( $verdict ) );
 			return;
 		}
@@ -116,7 +214,7 @@ class Shopify_Pulse_Fraud {
 		$courier_msg = $this->courier_block_message( $order->get_billing_phone() );
 		if ( $courier_msg ) {
 			if ( class_exists( '\Automattic\WooCommerce\StoreApi\Exceptions\RouteException' ) ) {
-				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 'sp_courier_blocked', $courier_msg, 400 );
+				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 'sp_courier_blocked', $this->with_contact( $courier_msg ), 400 );
 			}
 			$order->update_status( 'failed', $courier_msg );
 			return;
@@ -135,7 +233,7 @@ class Shopify_Pulse_Fraud {
 			if ( class_exists( '\Automattic\WooCommerce\StoreApi\Exceptions\RouteException' ) ) {
 				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
 					'sp_fraud_blocked',
-					$this->message( $verdict ),
+					$this->with_contact( $this->message( $verdict ) ),
 					400
 				);
 			}
@@ -240,6 +338,17 @@ class Shopify_Pulse_Fraud {
 		return ! empty( $verdict['message'] )
 			? $verdict['message']
 			: __( 'This order could not be accepted. Please contact support.', 'shopify-pulse-connector' );
+	}
+
+	/** Append the store's contact to a block message (Store API path, which has
+	 *  no custom modal — the number rides in the message text). */
+	private function with_contact( $message ) {
+		$c = $this->support_contact();
+		if ( '' === $c['phone'] ) {
+			return $message;
+		}
+		/* translators: %s: store contact phone number */
+		return $message . ' ' . sprintf( __( 'Contact us: %s', 'shopify-pulse-connector' ), $c['phone'] );
 	}
 
 	/**

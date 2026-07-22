@@ -38,6 +38,11 @@ class Shopify_Pulse_Settings {
 			'fraud_action'          => 'block',
 			'courier_min_ratio'     => 0,
 			'courier_min_parcels'   => 3,
+			// Shown to a shopper when checkout is blocked by fraud/courier — so a
+			// genuine buyer can still reach the store. Blank = use the connected
+			// tenant's contact number.
+			'support_phone'         => '',
+			'support_whatsapp'      => '',
 			'enable_customer_sync'  => 0,
 			'customer_sync_dir'     => 'both',
 			// Catalog is three independently-controlled entities, each with its
@@ -284,6 +289,8 @@ class Shopify_Pulse_Settings {
 		$clean['fraud_action']          = in_array( $fraud_action, array( 'block', 'hold', 'flag' ), true ) ? $fraud_action : 'block';
 		$clean['courier_min_ratio']     = max( 0, min( 100, absint( isset( $raw['courier_min_ratio'] ) ? $raw['courier_min_ratio'] : 0 ) ) );
 		$clean['courier_min_parcels']   = max( 1, absint( isset( $raw['courier_min_parcels'] ) ? $raw['courier_min_parcels'] : 3 ) );
+		$clean['support_phone']         = sanitize_text_field( isset( $raw['support_phone'] ) ? $raw['support_phone'] : '' );
+		$clean['support_whatsapp']      = sanitize_text_field( isset( $raw['support_whatsapp'] ) ? $raw['support_whatsapp'] : '' );
 		$clean['enable_customer_sync']  = empty( $raw['enable_customer_sync'] ) ? 0 : 1;
 		$cust_dir                       = isset( $raw['customer_sync_dir'] ) ? sanitize_key( $raw['customer_sync_dir'] ) : 'both';
 		$clean['customer_sync_dir']     = in_array( $cust_dir, array( 'push', 'pull', 'both' ), true ) ? $cust_dir : 'both';
@@ -348,25 +355,119 @@ class Shopify_Pulse_Settings {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
 		}
 		$scopes = isset( $result['scopes'] ) && is_array( $result['scopes'] ) ? $result['scopes'] : array();
+		$store  = isset( $result['store'] ) && is_array( $result['store'] ) ? $result['store'] : array();
 		update_option(
 			self::STATUS_OPTION,
 			array(
 				'ok'     => 1,
 				'sid'    => isset( $result['sid'] ) ? $result['sid'] : '',
 				'scopes' => $scopes,
+				'store'  => $store,
 				'time'   => current_time( 'mysql' ),
 			)
 		);
+		$who = ! empty( $store['name'] ) ? $store['name'] : ( isset( $result['sid'] ) ? $result['sid'] : '?' );
 		wp_send_json_success(
 			array(
 				'message' => sprintf(
-					/* translators: 1: store sid, 2: granted scopes */
-					__( 'Connected to store "%1$s". Scopes: %2$s', 'shopify-pulse-connector' ),
-					isset( $result['sid'] ) ? $result['sid'] : '?',
-					implode( ', ', $scopes )
+					/* translators: 1: store name, 2: number of permissions */
+					__( 'Connected to "%1$s" — %2$d permissions granted. Reloading…', 'shopify-pulse-connector' ),
+					$who,
+					count( $scopes )
 				),
+				'reload'  => true,
 			)
 		);
+	}
+
+	/**
+	 * "Connected to" panel: the tenant/store profile + the OAuth permissions this
+	 * plugin was granted, grouped by resource with read/write badges, so the
+	 * operator can see at a glance what the connection can do.
+	 */
+	private function render_connection_panel( $status ) {
+		if ( empty( $status['ok'] ) ) {
+			return;
+		}
+		$store   = isset( $status['store'] ) && is_array( $status['store'] ) ? $status['store'] : array();
+		$scopes  = isset( $status['scopes'] ) && is_array( $status['scopes'] ) ? $status['scopes'] : array();
+		$sid     = isset( $status['sid'] ) ? $status['sid'] : '';
+		$name    = ! empty( $store['name'] ) ? $store['name'] : $sid;
+		$initial = $name ? mb_strtoupper( mb_substr( (string) $name, 0, 1 ) ) : 'S';
+		$groups  = $this->group_scopes( $scopes );
+		?>
+		<div class="sp-conn">
+			<div class="sp-conn__top">
+				<span class="sp-conn__avatar" aria-hidden="true"><?php echo esc_html( $initial ); ?></span>
+				<div style="min-width:0;">
+					<div class="sp-conn__name"><?php echo esc_html( $name ); ?></div>
+					<div class="sp-dim" style="font-size:12px;font-family:monospace;"><?php echo esc_html( $sid ); ?></div>
+				</div>
+			</div>
+			<div class="sp-conn__meta">
+				<?php if ( ! empty( $store['contactPhone'] ) ) : ?><span><?php esc_html_e( 'Contact', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $store['contactPhone'] ); ?></b></span><?php endif; ?>
+				<?php if ( ! empty( $store['email'] ) ) : ?><span><?php esc_html_e( 'Email', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $store['email'] ); ?></b></span><?php endif; ?>
+				<?php if ( ! empty( $store['currency'] ) ) : ?><span><?php esc_html_e( 'Currency', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $store['currency'] ); ?></b></span><?php endif; ?>
+				<?php if ( ! empty( $store['country'] ) ) : ?><span><?php esc_html_e( 'Country', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $store['country'] ); ?></b></span><?php endif; ?>
+				<?php if ( ! empty( $store['domain'] ) ) : ?><span><?php esc_html_e( 'Domain', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $store['domain'] ); ?></b></span><?php endif; ?>
+				<?php if ( ! empty( $status['time'] ) ) : ?><span><?php esc_html_e( 'Verified', 'shopify-pulse-connector' ); ?>: <b><?php echo esc_html( $status['time'] ); ?></b></span><?php endif; ?>
+			</div>
+			<?php if ( $groups ) : ?>
+				<div class="sp-perms">
+					<p class="sp-perms__h"><?php echo esc_html( sprintf( _n( '%d permission granted to this plugin', '%d permissions granted to this plugin', count( $scopes ), 'shopify-pulse-connector' ), count( $scopes ) ) ); ?></p>
+					<div class="sp-perms__grid">
+						<?php foreach ( $groups as $resource => $actions ) : ?>
+							<div class="sp-perm">
+								<div class="sp-perm__name"><span class="dashicons <?php echo esc_attr( $this->perm_icon( $resource ) ); ?>" aria-hidden="true"></span> <?php echo esc_html( ucwords( str_replace( array( '_', '-' ), ' ', $resource ) ) ); ?></div>
+								<div class="sp-perm__acts">
+									<?php foreach ( $actions as $a ) : $cls = ( 'read' === $a ? 'read' : ( 'write' === $a ? 'write' : 'other' ) ); ?>
+										<span class="sp-act-badge <?php echo esc_attr( $cls ); ?>"><?php echo esc_html( $a ); ?></span>
+									<?php endforeach; ?>
+								</div>
+							</div>
+						<?php endforeach; ?>
+					</div>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/** Group `resource.action` scopes into resource → [actions]. */
+	private function group_scopes( $scopes ) {
+		$groups = array();
+		foreach ( (array) $scopes as $s ) {
+			$s        = (string) $s;
+			$parts    = explode( '.', $s, 2 );
+			$resource = $parts[0];
+			$action   = ( isset( $parts[1] ) && '' !== $parts[1] ) ? $parts[1] : $s;
+			if ( ! isset( $groups[ $resource ] ) ) {
+				$groups[ $resource ] = array();
+			}
+			if ( ! in_array( $action, $groups[ $resource ], true ) ) {
+				$groups[ $resource ][] = $action;
+			}
+		}
+		ksort( $groups );
+		return $groups;
+	}
+
+	/** Dashicon for a permission resource group. */
+	private function perm_icon( $resource ) {
+		$map = array(
+			'orders'      => 'dashicons-cart',
+			'products'    => 'dashicons-products',
+			'customers'   => 'dashicons-groups',
+			'categories'  => 'dashicons-category',
+			'brands'      => 'dashicons-tag',
+			'collections' => 'dashicons-portfolio',
+			'inventory'   => 'dashicons-archive',
+			'analytics'   => 'dashicons-chart-bar',
+			'fraud'       => 'dashicons-shield',
+			'courier'     => 'dashicons-airplane',
+			'shipping'    => 'dashicons-airplane',
+		);
+		return isset( $map[ $resource ] ) ? $map[ $resource ] : 'dashicons-admin-network';
 	}
 
 	/**
@@ -530,6 +631,23 @@ class Shopify_Pulse_Settings {
 				@media(max-width:400px){.sp-kpis{grid-template-columns:1fr}}
 				.sp a:focus-visible,.sp button:focus-visible,.sp input:focus-visible,.sp select:focus-visible{outline:2px solid var(--pri);outline-offset:1px;border-radius:4px}
 				@media(prefers-reduced-motion:reduce){.sp *{transition:none !important;animation:none !important}}
+				.sp-conn{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:16px 18px;margin:0 0 16px}
+				.sp-conn__top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+				.sp-conn__avatar{width:40px;height:40px;border-radius:10px;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;flex:0 0 auto}
+				.sp-conn__name{font-size:16px;font-weight:700;line-height:1.2;color:#1d2327}
+				.sp-conn__meta{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12.5px;color:var(--muted)}
+				.sp-conn__meta b{color:#1d2327;font-weight:600}
+				.sp-perms{margin-top:14px;border-top:1px solid #f0f0f1;padding-top:12px}
+				.sp-perms__h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 8px}
+				.sp-perms__grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+				.sp-perm{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;background:#fbfbfc}
+				.sp-perm__name{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;color:#1d2327}
+				.sp-perm__name .dashicons{font-size:16px;width:16px;height:16px;color:var(--pri)}
+				.sp-perm__acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+				.sp-act-badge{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;text-transform:capitalize}
+				.sp-act-badge.read{background:#e9f2fd;color:#1d6ad4}
+				.sp-act-badge.write{background:#fcf5e6;color:#996800}
+				.sp-act-badge.other{background:#f0f0f1;color:var(--muted)}
 			</style>
 
 			<div class="sp-hero">
@@ -552,6 +670,8 @@ class Shopify_Pulse_Settings {
 					<span id="sp-test-result" style="margin-left:4px;"></span>
 				</div>
 			</div>
+
+			<?php $this->render_connection_panel( $status ); ?>
 
 			<div class="sp-kpis">
 				<div class="sp-kpi">
@@ -655,6 +775,14 @@ class Shopify_Pulse_Settings {
 									<?php esc_html_e( 'parcels', 'shopify-pulse-connector' ); ?>
 								</span>
 								<p class="description"><?php esc_html_e( 'Set 0 to disable. e.g. 60 or 75 — customers whose bdcourier delivery-success ratio is below this (with enough parcel history) are blocked at checkout. Fails open if the API is unreachable.', 'shopify-pulse-connector' ); ?></p>
+							</div>
+							<div class="sp-field">
+								<label class="h" for="sp_support_phone"><?php esc_html_e( 'Support contact shown on a blocked checkout', 'shopify-pulse-connector' ); ?></label>
+								<div style="display:flex;gap:8px;flex-wrap:wrap;">
+									<input name="sp[support_phone]" id="sp_support_phone" type="text" value="<?php echo esc_attr( $s['support_phone'] ); ?>" placeholder="<?php esc_attr_e( 'Call number, e.g. 01XXXXXXXXX', 'shopify-pulse-connector' ); ?>" style="flex:1 1 180px;" />
+									<input name="sp[support_whatsapp]" id="sp_support_whatsapp" type="text" value="<?php echo esc_attr( $s['support_whatsapp'] ); ?>" placeholder="<?php esc_attr_e( 'WhatsApp, e.g. 8801XXXXXXXXX', 'shopify-pulse-connector' ); ?>" style="flex:1 1 180px;" />
+								</div>
+								<p class="description"><?php esc_html_e( 'When fraud or the courier gate blocks a checkout, the shopper sees a popup with these Call / WhatsApp buttons so a genuine buyer can still reach you. Leave blank to use the connected store’s contact number.', 'shopify-pulse-connector' ); ?></p>
 							</div>
 						</div>
 					</div>
@@ -784,6 +912,9 @@ class Shopify_Pulse_Settings {
 					.then( function ( j ) {
 						out.textContent = ( j && j.data && j.data.message ) ? j.data.message : 'Error';
 						out.style.color = ( j && j.success ) ? '#146c43' : '#b32d2e';
+						// Verify success returns fresh store profile + permissions;
+						// reload to render the connection panel from the saved status.
+						if ( j && j.success && j.data && j.data.reload ) { setTimeout( function () { location.reload(); }, 900 ); }
 					} )
 					.catch( function () { out.textContent = 'Request failed'; out.style.color = '#b32d2e'; } );
 			}
