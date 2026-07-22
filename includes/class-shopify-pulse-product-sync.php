@@ -219,10 +219,41 @@ class Shopify_Pulse_Product_Sync {
 		return $this->prune( $payload );
 	}
 
+	/**
+	 * Return a product/variant SKU, generating + persisting a unique one on the
+	 * WooCommerce product when it's missing — so the SKU exists in WooCommerce
+	 * AND flows to the platform, where products are mapped by SKU. Gated by the
+	 * `auto_sku` setting. Written via post meta (not $product->save()) so it
+	 * doesn't re-fire the product-sync save hook.
+	 */
+	private function ensure_sku( $product ) {
+		$sku = trim( (string) $product->get_sku() );
+		if ( '' !== $sku || ! $this->settings->get( 'auto_sku' ) ) {
+			return $sku;
+		}
+		$base = 'SP-' . $product->get_id();
+		$sku  = $base;
+		$i    = 1;
+		while ( function_exists( 'wc_get_product_id_by_sku' ) && wc_get_product_id_by_sku( $sku ) ) {
+			if ( $i > 50 ) {
+				$sku = $base . '-' . wp_generate_password( 6, false, false );
+				break;
+			}
+			$sku = $base . '-' . $i;
+			$i++;
+		}
+		update_post_meta( $product->get_id(), '_sku', $sku );
+		if ( function_exists( 'wc_delete_product_transients' ) ) {
+			wc_delete_product_transients( $product->get_id() );
+		}
+		$this->logger->debug( 'Generated SKU ' . $sku . ' for product ' . $product->get_id() );
+		return $sku;
+	}
+
 	private function simple_variant( $product ) {
 		return array(
 			'optionValues'   => array(),
-			'sku'            => $product->get_sku(),
+			'sku'            => $this->ensure_sku( $product ),
 			'price'          => (float) $product->get_price(),
 			'compareAtPrice' => $this->compare_at( $product ),
 			'weight'         => $product->get_weight() ? (float) $product->get_weight() : null,
@@ -273,7 +304,7 @@ class Shopify_Pulse_Product_Sync {
 			}
 			$variants[] = array(
 				'optionValues'   => $combo,
-				'sku'            => $v->get_sku(),
+				'sku'            => $this->ensure_sku( $v ),
 				'price'          => (float) $v->get_price(),
 				'compareAtPrice' => $this->compare_at( $v ),
 				'weight'         => $v->get_weight() ? (float) $v->get_weight() : null,
