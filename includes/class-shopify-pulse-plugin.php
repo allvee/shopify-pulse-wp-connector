@@ -31,6 +31,8 @@ class Shopify_Pulse_Plugin {
 	private $abandoned_sync;
 	/** @var Shopify_Pulse_Abandoned_Admin */
 	private $abandoned_admin;
+	/** @var Shopify_Pulse_Block_Beacon */
+	private $block_beacon;
 	/** @var Shopify_Pulse_Analytics */
 	private $analytics;
 	/** @var Shopify_Pulse_Fraud */
@@ -70,6 +72,7 @@ class Shopify_Pulse_Plugin {
 		$this->order_sync     = new Shopify_Pulse_Order_Sync( $this->settings, $this->api, $this->logger );
 		$this->abandoned_sync  = new Shopify_Pulse_Abandoned_Sync( $this->settings, $this->api, $this->logger );
 		$this->abandoned_admin = new Shopify_Pulse_Abandoned_Admin( $this->settings, $this->abandoned_sync, $this->logger );
+		$this->block_beacon    = new Shopify_Pulse_Block_Beacon( $this->settings, $this->abandoned_sync, $this->logger );
 		$this->analytics      = new Shopify_Pulse_Analytics( $this->settings, $this->api, $this->logger );
 		$this->fraud          = new Shopify_Pulse_Fraud( $this->settings, $this->api, $this->logger );
 		$this->customer_sync  = new Shopify_Pulse_Customer_Sync( $this->settings, $this->api, $this->logger );
@@ -93,6 +96,7 @@ class Shopify_Pulse_Plugin {
 		if ( $this->settings->is_active() ) {
 			$this->order_sync->register();
 			$this->abandoned_sync->register();
+			$this->block_beacon->register();
 			$this->analytics->register();
 			$this->fraud->register();
 			$this->customer_sync->register();

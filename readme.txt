@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.4.2
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.5.0 =
+* Block (Store API) checkout support for abandoned carts. A lightweight front-end beacon reads the contact + address + cart from the checkout data store and captures the cart as the shopper fills the form — WooCommerce Blocks fires no server hook before order placement, so classic-checkout capture alone missed these. Dedupe-safe per browser; only loads on a block-based checkout with abandoned-cart sync enabled.
 
 = 1.4.2 =
 * Abandoned carts + Settings screens are now fully mobile responsive. On phones the carts table reflows into labelled cards.
