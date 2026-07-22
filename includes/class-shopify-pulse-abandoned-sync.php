@@ -124,10 +124,13 @@ class Shopify_Pulse_Abandoned_Sync {
 			$subtotal = isset( $ci['line_subtotal'] ) ? (float) $ci['line_subtotal'] : 0.0;
 			$unit    = $qty > 0 ? round( $subtotal / $qty, 2 ) : $subtotal;
 			$lines[] = array(
-				'title' => $product ? $product->get_name() : __( 'Item', 'shopify-pulse-connector' ),
-				'sku'   => ( $product && $product->get_sku() ) ? $product->get_sku() : null,
-				'qty'   => max( 1, $qty ),
-				'price' => (float) $unit,
+				// product_id lets the admin worklist filter carts by product and
+				// lets Convert re-add the exact product to the WooCommerce order.
+				'product_id' => $product ? $product->get_id() : null,
+				'title'      => $product ? $product->get_name() : __( 'Item', 'shopify-pulse-connector' ),
+				'sku'        => ( $product && $product->get_sku() ) ? $product->get_sku() : null,
+				'qty'        => max( 1, $qty ),
+				'price'      => (float) $unit,
 			);
 		}
 
@@ -241,10 +244,11 @@ class Shopify_Pulse_Abandoned_Sync {
 	}
 
 	/**
-	 * The cart's session completed checkout — mark the row recovered instead of
-	 * deleting it, so it drops out of the sweep/push working set (converted = 0
-	 * filter) yet still counts toward the recovery analytics on the Abandoned
-	 * carts screen. The 30-day GC in {@see sweep()} prunes it later.
+	 * The cart's session completed checkout — mark the row recovered (status =
+	 * converted) instead of deleting it, so it drops out of the sweep/push
+	 * working set yet still counts toward the recovery analytics on the
+	 * Abandoned carts screen (and links to the order it became). The 30-day GC
+	 * in {@see sweep()} prunes it later.
 	 */
 	public function mark_converted( $order_id ) {
 		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
@@ -254,12 +258,12 @@ class Shopify_Pulse_Abandoned_Sync {
 		if ( empty( $session_key ) ) {
 			return;
 		}
+		$data = array( 'status' => 'converted', 'converted' => 1, 'updated_at' => current_time( 'mysql', true ) );
+		if ( $order_id ) {
+			$data['wc_order_id'] = (int) $order_id;
+		}
 		global $wpdb;
-		$wpdb->update( // phpcs:ignore WordPress.DB
-			self::table_name(),
-			array( 'converted' => 1, 'updated_at' => current_time( 'mysql', true ) ),
-			array( 'session_key' => $session_key )
-		);
+		$wpdb->update( self::table_name(), $data, array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
 	}
 
 	public function mark_converted_order( $order ) {
@@ -291,7 +295,7 @@ class Shopify_Pulse_Abandoned_Sync {
 		// carts.
 		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE converted = 0 AND synced = 0 AND updated_at < %s ORDER BY updated_at ASC LIMIT %d",
+				"SELECT * FROM {$table} WHERE status = 'active' AND synced = 0 AND updated_at < %s ORDER BY updated_at ASC LIMIT %d",
 				$cutoff,
 				self::SWEEP_BATCH
 			)
@@ -385,7 +389,7 @@ class Shopify_Pulse_Abandoned_Sync {
 		}
 		global $wpdb;
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
-			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . ' WHERE session_key = %s AND converted = 0 AND synced = 0', $session_key )
+			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . " WHERE session_key = %s AND status = 'active' AND synced = 0", $session_key )
 		);
 		if ( $row ) {
 			$this->push_row( $row );
@@ -408,7 +412,7 @@ class Shopify_Pulse_Abandoned_Sync {
 		}
 		global $wpdb;
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
-			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . ' WHERE session_key = %s AND converted = 0', $session_key )
+			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . " WHERE session_key = %s AND status = 'active'", $session_key )
 		);
 		return $row ? $this->push_row( $row ) : false;
 	}
@@ -426,7 +430,7 @@ class Shopify_Pulse_Abandoned_Sync {
 		$limit = max( 1, min( 500, (int) $limit ) );
 		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table_name() . " WHERE converted = 0 AND ( ( email IS NOT NULL AND email <> '' ) OR ( phone IS NOT NULL AND phone <> '' ) ) ORDER BY updated_at ASC LIMIT %d",
+				'SELECT * FROM ' . self::table_name() . " WHERE status = 'active' AND ( ( email IS NOT NULL AND email <> '' ) OR ( phone IS NOT NULL AND phone <> '' ) ) ORDER BY updated_at ASC LIMIT %d",
 				$limit
 			)
 		);
@@ -437,5 +441,155 @@ class Shopify_Pulse_Abandoned_Sync {
 			}
 		}
 		return $sent;
+	}
+
+	/** Fetch one captured cart row by session key (admin worklist). */
+	public function get_row( $session_key ) {
+		if ( empty( $session_key ) ) {
+			return null;
+		}
+		global $wpdb;
+		return $wpdb->get_row( // phpcs:ignore WordPress.DB
+			$wpdb->prepare( 'SELECT * FROM ' . self::table_name() . ' WHERE session_key = %s', $session_key )
+		);
+	}
+
+	/**
+	 * Operator disposition change from the worklist (cancel / fake / reopen).
+	 * A local-only status flip: the platform already has its copy from the
+	 * capture-time push, so this never calls the API. A non-active status drops
+	 * the cart out of the sweep/resync working set.
+	 *
+	 * @param string $session_key
+	 * @param string $status active|cancelled|fake
+	 * @return bool
+	 */
+	public function set_status( $session_key, $status ) {
+		$allowed = array( 'active', 'cancelled', 'fake' );
+		if ( empty( $session_key ) || ! in_array( $status, $allowed, true ) ) {
+			return false;
+		}
+		global $wpdb;
+		return false !== $wpdb->update( // phpcs:ignore WordPress.DB
+			self::table_name(),
+			array( 'status' => $status, 'updated_at' => current_time( 'mysql', true ) ),
+			array( 'session_key' => $session_key )
+		);
+	}
+
+	/** Delete one captured cart from the local worklist (local-only). */
+	public function delete_cart( $session_key ) {
+		if ( empty( $session_key ) ) {
+			return false;
+		}
+		global $wpdb;
+		return false !== $wpdb->delete( self::table_name(), array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
+	}
+
+	/**
+	 * Convert a captured cart into a native WooCommerce order (pending payment),
+	 * so it flows through the normal order pipeline — including the existing
+	 * order-sync that mirrors it to the platform. Catalog lines are re-added by
+	 * product id / SKU; a line whose product no longer exists is added as a
+	 * priced fee so the total still matches. Marks the cart converted and links
+	 * the new order id. Returns the order id or a WP_Error.
+	 *
+	 * @param string $session_key
+	 * @return int|WP_Error
+	 */
+	public function convert_to_wc_order( $session_key ) {
+		if ( ! function_exists( 'wc_create_order' ) ) {
+			return new WP_Error( 'sp_no_wc', __( 'WooCommerce is not active.', 'shopify-pulse-connector' ) );
+		}
+		$row = $this->get_row( $session_key );
+		if ( ! $row ) {
+			return new WP_Error( 'sp_no_row', __( 'Cart not found.', 'shopify-pulse-connector' ) );
+		}
+		if ( 'converted' === $row->status && $row->wc_order_id ) {
+			return (int) $row->wc_order_id;
+		}
+		$lines = json_decode( (string) $row->cart_json, true );
+		if ( empty( $lines ) || ! is_array( $lines ) ) {
+			return new WP_Error( 'sp_empty_cart', __( 'This cart has no items to convert.', 'shopify-pulse-connector' ) );
+		}
+
+		$order = wc_create_order();
+		if ( is_wp_error( $order ) ) {
+			return $order;
+		}
+
+		foreach ( $lines as $l ) {
+			$qty     = isset( $l['qty'] ) ? max( 1, (int) $l['qty'] ) : 1;
+			$price   = isset( $l['price'] ) ? (float) $l['price'] : 0.0;
+			$product = null;
+			if ( ! empty( $l['product_id'] ) ) {
+				$product = wc_get_product( (int) $l['product_id'] );
+			}
+			if ( ! $product && ! empty( $l['sku'] ) && function_exists( 'wc_get_product_id_by_sku' ) ) {
+				$pid = wc_get_product_id_by_sku( (string) $l['sku'] );
+				if ( $pid ) {
+					$product = wc_get_product( $pid );
+				}
+			}
+			if ( $product ) {
+				// Pin the captured unit price (it may differ from the current
+				// catalog price the cart was abandoned at).
+				$order->add_product( $product, $qty, array(
+					'subtotal' => $price * $qty,
+					'total'    => $price * $qty,
+				) );
+			} else {
+				$item = new WC_Order_Item_Fee();
+				$item->set_name( ! empty( $l['title'] ) ? (string) $l['title'] : __( 'Item', 'shopify-pulse-connector' ) );
+				$item->set_amount( $price * $qty );
+				$item->set_total( $price * $qty );
+				$order->add_item( $item );
+			}
+		}
+
+		// Address from the captured draft (billing + shipping).
+		$addr = json_decode( (string) $row->address_json, true );
+		$addr = is_array( $addr ) ? $addr : array();
+		$name = (string) ( $row->customer_name ?? '' );
+		if ( '' === $name && ! empty( $addr['name'] ) ) {
+			$name = (string) $addr['name'];
+		}
+		$parts = preg_split( '/\s+/', trim( $name ), 2 );
+		$billing = array(
+			'first_name' => isset( $parts[0] ) ? $parts[0] : '',
+			'last_name'  => isset( $parts[1] ) ? $parts[1] : '',
+			'email'      => (string) ( $row->email ?? ( $addr['email'] ?? '' ) ),
+			'phone'      => (string) ( $row->phone ?? ( $addr['phone'] ?? '' ) ),
+			'address_1'  => (string) ( $addr['address1'] ?? '' ),
+			'address_2'  => (string) ( $addr['address2'] ?? '' ),
+			'city'       => (string) ( $addr['city'] ?? '' ),
+			'state'      => (string) ( $addr['province'] ?? '' ),
+			'postcode'   => (string) ( $addr['zip'] ?? '' ),
+			'country'    => (string) ( $addr['country'] ?? '' ),
+			'company'    => (string) ( $addr['company'] ?? '' ),
+		);
+		$order->set_address( $billing, 'billing' );
+		$order->set_address( $billing, 'shipping' );
+		if ( $row->currency ) {
+			$order->set_currency( $row->currency );
+		}
+		$order->add_order_note( __( 'Created from an abandoned cart by Shopify Pulse.', 'shopify-pulse-connector' ) );
+		$order->calculate_totals();
+		$order->set_status( 'pending', __( 'Recovered from abandoned cart.', 'shopify-pulse-connector' ) );
+		$order->save();
+
+		$order_id = $order->get_id();
+		global $wpdb;
+		$wpdb->update( // phpcs:ignore WordPress.DB
+			self::table_name(),
+			array(
+				'status'      => 'converted',
+				'converted'   => 1,
+				'wc_order_id' => $order_id,
+				'updated_at'  => current_time( 'mysql', true ),
+			),
+			array( 'session_key' => $session_key )
+		);
+		return $order_id;
 	}
 }
