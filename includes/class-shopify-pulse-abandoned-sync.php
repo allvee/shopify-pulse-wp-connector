@@ -127,15 +127,18 @@ class Shopify_Pulse_Abandoned_Sync {
 				// product_id lets the admin worklist filter carts by product and
 				// lets Convert re-add the exact product to the WooCommerce order.
 				'product_id' => $product ? $product->get_id() : null,
-				'title'      => $product ? $product->get_name() : __( 'Item', 'shopify-pulse-connector' ),
-				'sku'        => ( $product && $product->get_sku() ) ? $product->get_sku() : null,
+				'title'      => $this->clamp( $product ? $product->get_name() : __( 'Item', 'shopify-pulse-connector' ), 255 ),
+				'sku'        => ( $product && $product->get_sku() ) ? $this->clamp( $product->get_sku(), 64 ) : null,
 				'qty'        => max( 1, $qty ),
-				'price'      => (float) $unit,
+				'price'      => max( 0, (float) $unit ),
 			);
 		}
 
-		$email   = $this->current_email();
-		$phone   = ( WC()->customer ) ? WC()->customer->get_billing_phone() : '';
+		// Normalize contact to the platform's standard up front — a malformed
+		// email / phone would be dropped at push and could leave a cart wrongly
+		// "reachable". Clean here so the contact gate + worklist are accurate too.
+		$email   = $this->clean_email( $this->current_email() );
+		$phone   = $this->clean_msisdn( ( WC()->customer ) ? WC()->customer->get_billing_phone() : '' );
 
 		// An abandoned cart is only an actionable "incomplete order" once we have
 		// a way to reach the shopper. `woocommerce_add_to_cart` fires long before
@@ -208,8 +211,8 @@ class Shopify_Pulse_Abandoned_Sync {
 		}
 		$session_key = 'blk_' . substr( $key, 0, 60 );
 
-		$email = isset( $data['email'] ) ? sanitize_email( (string) $data['email'] ) : '';
-		$phone = isset( $data['phone'] ) ? sanitize_text_field( (string) $data['phone'] ) : '';
+		$email = isset( $data['email'] ) ? $this->clean_email( $data['email'] ) : '';
+		$phone = isset( $data['phone'] ) ? $this->clean_msisdn( $data['phone'] ) : '';
 		// An incomplete order needs a way to reach the shopper (same gate as capture()).
 		if ( '' === $email && '' === $phone ) {
 			return false;
@@ -222,10 +225,10 @@ class Shopify_Pulse_Abandoned_Sync {
 			}
 			$lines[] = array(
 				'product_id' => isset( $l['product_id'] ) ? (int) $l['product_id'] : null,
-				'title'      => isset( $l['title'] ) ? sanitize_text_field( (string) $l['title'] ) : __( 'Item', 'shopify-pulse-connector' ),
-				'sku'        => ! empty( $l['sku'] ) ? sanitize_text_field( (string) $l['sku'] ) : null,
+				'title'      => isset( $l['title'] ) ? $this->clamp( sanitize_text_field( (string) $l['title'] ), 255 ) : __( 'Item', 'shopify-pulse-connector' ),
+				'sku'        => ! empty( $l['sku'] ) ? $this->clamp( sanitize_text_field( (string) $l['sku'] ), 64 ) : null,
 				'qty'        => max( 1, isset( $l['qty'] ) ? (int) $l['qty'] : 1 ),
-				'price'      => isset( $l['price'] ) ? (float) $l['price'] : 0.0,
+				'price'      => isset( $l['price'] ) ? max( 0, (float) $l['price'] ) : 0.0,
 			);
 		}
 		if ( empty( $lines ) ) {
@@ -435,26 +438,88 @@ class Shopify_Pulse_Abandoned_Sync {
 		);
 	}
 
-	/** Build + send one abandoned-cart row to the platform. Returns bool. */
+	/** Clamp a string to a max length, multibyte-safe, matching the platform DTO. */
+	private function clamp( $s, $len ) {
+		$s = (string) $s;
+		return function_exists( 'mb_substr' ) ? mb_substr( $s, 0, $len ) : substr( $s, 0, $len );
+	}
+
+	/** Normalize to a valid, length-bounded email, or '' — the platform rejects a
+	 *  malformed address (IsEmail, MaxLength 255), which would fail the push. */
+	public function clean_email( $email ) {
+		$email = sanitize_email( (string) $email );
+		return ( '' !== $email && is_email( $email ) ) ? $this->clamp( $email, 255 ) : '';
+	}
+
+	/** Normalize a phone to `+`?digits, clamped to the platform's 32-char limit. */
+	public function clean_msisdn( $phone ) {
+		$phone = trim( (string) $phone );
+		if ( '' === $phone ) {
+			return '';
+		}
+		$plus   = ( '+' === substr( $phone, 0, 1 ) ) ? '+' : '';
+		$digits = preg_replace( '/\D+/', '', $phone );
+		return '' === $digits ? '' : $this->clamp( $plus . $digits, 32 );
+	}
+
+	/**
+	 * Map stored cart lines to the platform's line contract, clamped to its
+	 * limits (title ≤255, sku ≤64, qty int ≥1, price ≥0). Drops the plugin-local
+	 * `product_id` (not part of the platform DTO) and any non-array/blank line.
+	 *
+	 * @param mixed $lines
+	 * @return array
+	 */
+	private function standardize_lines( $lines ) {
+		$out = array();
+		foreach ( (array) $lines as $l ) {
+			if ( ! is_array( $l ) ) {
+				continue;
+			}
+			$title = isset( $l['title'] ) ? $this->clamp( $l['title'], 255 ) : '';
+			if ( '' === $title ) {
+				$title = __( 'Item', 'shopify-pulse-connector' );
+			}
+			$line = array(
+				'title' => $title,
+				'qty'   => max( 1, isset( $l['qty'] ) ? (int) $l['qty'] : 1 ),
+				'price' => isset( $l['price'] ) ? max( 0, (float) $l['price'] ) : 0.0,
+			);
+			if ( ! empty( $l['sku'] ) ) {
+				$line['sku'] = $this->clamp( $l['sku'], 64 );
+			}
+			$out[] = $line;
+		}
+		return $out;
+	}
+
+	/**
+	 * Build + send one abandoned-cart row to the platform. Returns bool. Every
+	 * field is normalized + clamped to the platform's IngestAbandonedDto limits
+	 * here, so a push is never rejected (and never retry-loops) on bad data.
+	 */
 	private function push_row( $row ) {
-		$lines = json_decode( $row->cart_json, true );
-		if ( empty( $lines ) || ! is_array( $lines ) || ( empty( $row->email ) && empty( $row->phone ) ) ) {
+		$lines  = $this->standardize_lines( json_decode( $row->cart_json, true ) );
+		$email  = $this->clean_email( $row->email );
+		$msisdn = $this->clean_msisdn( $row->phone );
+		// Need at least one valid line AND one reachable contact.
+		if ( empty( $lines ) || ( '' === $email && '' === $msisdn ) ) {
 			return false;
 		}
 		global $wpdb;
 		$payload = array(
 			'fingerprint'  => hash( 'sha256', $this->settings->get_sid() . '|' . $row->session_key ),
-			'email'        => $row->email ? $row->email : null,
-			'msisdn'       => $row->phone ? $row->phone : null,
+			'email'        => '' !== $email ? $email : null,
+			'msisdn'       => '' !== $msisdn ? $msisdn : null,
 			'lines'        => $lines,
-			'subtotal'     => (float) $row->subtotal,
-			'currency'     => $row->currency ? $row->currency : 'BDT',
-			'furthestStep' => $row->furthest_step ? $row->furthest_step : 'contact',
+			'subtotal'     => max( 0, (float) $row->subtotal ),
+			'currency'     => $this->clamp( $row->currency ? $row->currency : 'BDT', 3 ),
+			'furthestStep' => $this->clamp( $row->furthest_step ? $row->furthest_step : 'contact', 32 ),
 		);
 		// Carry the captured name + address so the platform can show who the cart
 		// belongs to and one-click convert it (omitted when never captured).
 		if ( ! empty( $row->customer_name ) ) {
-			$payload['customerName'] = $row->customer_name;
+			$payload['customerName'] = $this->clamp( $row->customer_name, 255 );
 		}
 		$address = isset( $row->address_json ) && '' !== (string) $row->address_json
 			? json_decode( $row->address_json, true )
