@@ -490,7 +490,7 @@ class Shopify_Pulse_Settings {
 				.sp-kpi__label .dashicons{font-size:15px;width:15px;height:15px;color:var(--pri)}
 				.sp-kpi__num{font-size:26px;font-weight:700;line-height:1.15;margin-top:7px;font-variant-numeric:tabular-nums;color:#1d2327}
 				.sp-kpi__sub{font-size:12px;color:var(--muted);margin-top:2px}
-				.sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+				.sp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}
 				.sp-card{background:#fff;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
 				.sp-card__head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--bd);font-weight:600;font-size:14px}
 				.sp-card__head .dashicons{color:var(--pri)}
@@ -503,6 +503,17 @@ class Shopify_Pulse_Settings {
 				.sp-help{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:6px 16px;margin:0 0 16px}
 				.sp-help summary{cursor:pointer;font-weight:600;padding:8px 0}
 				@media(max-width:782px){.sp-hero{flex-direction:column;align-items:flex-start}}
+				@media(max-width:600px){
+					.sp-hero{padding:14px}
+					.sp-actions{width:100%}
+					.sp-sync-group{width:100%;justify-content:flex-start}
+					.sp-sync-group .button{flex:1 1 auto}
+					.sp-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+					.sp-kpi__num{font-size:22px}
+					.sp-grid{grid-template-columns:1fr}
+					.sp-field label.h{font-size:13px}
+				}
+				@media(max-width:400px){.sp-kpis{grid-template-columns:1fr}}
 			</style>
 
 			<div class="sp-hero">
