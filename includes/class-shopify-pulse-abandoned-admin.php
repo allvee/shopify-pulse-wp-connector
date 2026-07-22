@@ -303,8 +303,8 @@ class Shopify_Pulse_Abandoned_Admin {
 					<div class="sp-td-val">
 						<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
 						<div class="sp-contact">
-							<?php if ( $row->phone ) : ?><span>📞 <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
-							<?php if ( $row->email ) : ?><span>✉ <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
+							<?php if ( $row->phone ) : ?><span><span class="dashicons dashicons-phone" aria-hidden="true"></span> <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
+							<?php if ( $row->email ) : ?><span><span class="dashicons dashicons-email" aria-hidden="true"></span> <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
 						</div>
 						<?php if ( $row->phone ) : ?>
 							<div class="sp-courier" data-phone="<?php echo esc_attr( $row->phone ); ?>">
@@ -768,6 +768,12 @@ class Shopify_Pulse_Abandoned_Admin {
 				.sp-dl-meta>div{min-width:0}
 				.sp-dl-foot{margin-top:12px;font-size:11px;word-break:break-all}
 				@media(max-width:560px){.sp-dl-grid,.sp-dl-meta{grid-template-columns:1fr}}
+				.sp-contact .dashicons{font-size:13px;width:13px;height:13px;vertical-align:-2px;opacity:.7}
+				/* Accessibility + interaction polish (data-dense dashboard). */
+				.sp-ab .sp-filters a,.sp-ab .sp-menu-btn,.sp-ab .sp-act,.sp-ab .sp-cb,.sp-ab .button,.sp-ab .sp-check-courier{cursor:pointer}
+				.sp-ab a:focus-visible,.sp-ab button:focus-visible,.sp-ab input:focus-visible,.sp-ab select:focus-visible,.sp-ab .sp-filters a:focus-visible{outline:2px solid var(--pri);outline-offset:1px;border-radius:4px}
+				.sp-ab .sp-cb:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+				@media(prefers-reduced-motion:reduce){.sp-ab *{transition:none !important;animation:none !important}}
 				@media(max-width:860px){
 					.sp-funnel__row{grid-template-columns:90px 1fr 40px}
 					.sp-toolbar{gap:8px}.sp-toolbar>div{flex:1 1 140px}.sp-toolbar input,.sp-toolbar select{width:100%}
@@ -796,7 +802,7 @@ class Shopify_Pulse_Abandoned_Admin {
 						echo esc_html( sprintf( __( 'Resync all pending (%d)', 'shopify-pulse-connector' ), $k['pending'] ) );
 						?>
 					</button>
-					<span id="sp-resync-msg" class="sp-msg" style="margin-left:8px;"></span>
+					<span id="sp-resync-msg" class="sp-msg" style="margin-left:8px;" role="status" aria-live="polite"></span>
 				</div>
 			</div>
 
@@ -848,7 +854,7 @@ class Shopify_Pulse_Abandoned_Admin {
 							<a class="<?php echo $f['status'] === $key ? 'on' : ''; ?>" href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $label ); ?></a>
 						<?php endforeach; ?>
 					</span>
-					<span id="sp-count" class="sp-dim"></span>
+					<span id="sp-count" class="sp-dim" aria-live="polite"></span>
 				</div>
 
 				<div class="sp-toolbar">
@@ -880,7 +886,7 @@ class Shopify_Pulse_Abandoned_Admin {
 					</select>
 					<button type="button" class="button" id="sp-bulk-apply"><?php esc_html_e( 'Apply', 'shopify-pulse-connector' ); ?></button>
 					<span id="sp-bulk-count" class="sp-dim"></span>
-					<span id="sp-bulk-msg" class="sp-msg"></span>
+					<span id="sp-bulk-msg" class="sp-msg" role="status" aria-live="polite"></span>
 				</div>
 
 				<div style="overflow-x:auto;">
@@ -922,6 +928,8 @@ class Shopify_Pulse_Abandoned_Admin {
 				'pickOp'     => __( 'Choose a bulk action first.', 'shopify-pulse-connector' ),
 				'pickRows'   => __( 'Select at least one cart.', 'shopify-pulse-connector' ),
 				'confirmBulk'=> __( 'Apply "%1$s" to %2$d selected cart(s)?', 'shopify-pulse-connector' ),
+				'detailsTitle'=> __( 'Cart details', 'shopify-pulse-connector' ),
+				'close'      => __( 'Close', 'shopify-pulse-connector' ),
 				'noRatio'    => __( 'No data', 'shopify-pulse-connector' ),
 				'noRatioHint'=> __( 'No BDCourier history for this number, or BDCourier is not configured for this store on the platform.', 'shopify-pulse-connector' ),
 			) ); ?>;
@@ -1046,15 +1054,20 @@ class Shopify_Pulse_Abandoned_Admin {
 			}
 			function openDetails( key ) {
 				var root = document.getElementById( 'sp-modal-root' );
-				root.innerHTML = '<div class="sp-modal-bg"><div class="sp-modal"><button class="sp-x">×</button><p>' + strings.working + '</p></div></div>';
+				var xBtn = '<button class="sp-x" aria-label="' + strings.close + '">×</button>';
+				root.innerHTML = '<div class="sp-modal-bg"><div class="sp-modal" role="dialog" aria-modal="true" aria-label="' + strings.detailsTitle + '">' + xBtn + '<p>' + strings.working + '</p></div></div>';
 				var bg = root.querySelector( '.sp-modal-bg' );
-				function close() { root.innerHTML = ''; }
+				function onKey( e ) { if ( e.key === 'Escape' ) { close(); } }
+				function close() { root.innerHTML = ''; document.removeEventListener( 'keydown', onKey ); }
+				document.addEventListener( 'keydown', onKey );
 				bg.addEventListener( 'click', function ( e ) { if ( e.target === bg ) { close(); } } );
-				root.querySelector( '.sp-x' ).addEventListener( 'click', close );
+				function bindX() { var x = root.querySelector( '.sp-x' ); if ( x ) { x.addEventListener( 'click', close ); x.focus(); } }
+				bindX();
 				post( fd( 'shopify_pulse_abandoned_details', { session_key: key } ) ).then( function ( j ) {
 					var box = root.querySelector( '.sp-modal' );
-					if ( j && j.success ) { box.innerHTML = '<button class="sp-x">×</button>' + j.data.html; box.querySelector( '.sp-x' ).addEventListener( 'click', close ); }
-					else { box.innerHTML = '<button class="sp-x">×</button><p>' + ( ( j && j.data && j.data.message ) || strings.failed ) + '</p>'; box.querySelector( '.sp-x' ).addEventListener( 'click', close ); }
+					if ( ! box ) { return; }
+					box.innerHTML = xBtn + ( ( j && j.success ) ? j.data.html : '<p>' + ( ( j && j.data && j.data.message ) || strings.failed ) + '</p>' );
+					bindX();
 				} );
 			}
 			bindRows();

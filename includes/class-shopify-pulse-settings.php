@@ -528,6 +528,8 @@ class Shopify_Pulse_Settings {
 					.sp-field label.h{font-size:13px}
 				}
 				@media(max-width:400px){.sp-kpis{grid-template-columns:1fr}}
+				.sp a:focus-visible,.sp button:focus-visible,.sp input:focus-visible,.sp select:focus-visible{outline:2px solid var(--pri);outline-offset:1px;border-radius:4px}
+				@media(prefers-reduced-motion:reduce){.sp *{transition:none !important;animation:none !important}}
 			</style>
 
 			<div class="sp-hero">
