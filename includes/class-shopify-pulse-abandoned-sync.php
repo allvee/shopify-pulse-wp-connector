@@ -136,6 +136,18 @@ class Shopify_Pulse_Abandoned_Sync {
 
 		$email   = $this->current_email();
 		$phone   = ( WC()->customer ) ? WC()->customer->get_billing_phone() : '';
+
+		// An abandoned cart is only an actionable "incomplete order" once we have
+		// a way to reach the shopper. `woocommerce_add_to_cart` fires long before
+		// the checkout contact step, so capturing then would store blank-customer
+		// rows that clutter the worklist and can never be recovered. Skip until an
+		// email or phone exists; once the shopper types one at checkout, capture()
+		// runs again (with contact) and the cart is stored then. A row that lost
+		// its cart entirely is still cleaned up above.
+		if ( '' === trim( (string) $email ) && '' === trim( (string) $phone ) ) {
+			return;
+		}
+
 		$name    = $this->current_name();
 		$address = $this->current_address();
 		$has_addr = ! empty( $address['address1'] );
