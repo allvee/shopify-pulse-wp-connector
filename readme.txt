@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.5.1
+Stable tag: 1.5.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.5.2 =
+* Fix: capture any email the shopper actually enters. Email stays optional (phone-only carts are fine), but the previous strict validation could drop a valid address; now any "@"-shaped email is kept and pushed.
 
 = 1.5.1 =
 * Data quality: captured contacts and cart lines are now normalized and length-clamped to the platform's limits both when stored and when pushed — invalid emails and malformed phones are dropped, over-long titles/SKUs are trimmed, and only the platform's line fields are sent. Stops a cart with bad data from being rejected and retried forever.
