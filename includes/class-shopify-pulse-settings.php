@@ -571,6 +571,19 @@ class Shopify_Pulse_Settings {
 		?>
 		<?php
 		$status = $this->status();
+		// Back-fill the store profile for a connection that was verified before
+		// the profile existed (its saved status has no `store`) — one ping, then
+		// cached — so the store name/permissions show without a manual re-verify.
+		if ( ! empty( $status['ok'] ) && empty( $status['store'] ) && $this->is_configured() ) {
+			$ping = Shopify_Pulse_Plugin::instance()->api()->get( '/connect/ping' );
+			if ( ! is_wp_error( $ping ) && isset( $ping['store'] ) && is_array( $ping['store'] ) ) {
+				$status['store'] = $ping['store'];
+				if ( isset( $ping['scopes'] ) && is_array( $ping['scopes'] ) ) {
+					$status['scopes'] = $ping['scopes'];
+				}
+				update_option( self::STATUS_OPTION, $status );
+			}
+		}
 		$active = $this->is_active();
 		$k      = $this->stats();
 		if ( ! $active ) {
