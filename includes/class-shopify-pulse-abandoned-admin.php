@@ -298,48 +298,56 @@ class Shopify_Pulse_Abandoned_Admin {
 			?>
 			<tr data-key="<?php echo $key_attr; ?>" data-status="<?php echo esc_attr( $row->status ); ?>">
 				<td class="sp-cb-cell"><input type="checkbox" class="sp-cb" value="<?php echo $key_attr; ?>" aria-label="<?php esc_attr_e( 'Select cart', 'shopify-pulse-connector' ); ?>" /></td>
-				<td>
-					<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
-					<div class="sp-contact">
-						<?php if ( $row->phone ) : ?><span>📞 <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
-						<?php if ( $row->email ) : ?><span>✉ <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
-						<?php if ( ! $reachable ) : ?><span><?php esc_html_e( 'no contact', 'shopify-pulse-connector' ); ?></span><?php endif; ?>
-					</div>
-					<?php if ( $reachable ) : ?>
-						<div class="sp-courier" data-phone="<?php echo esc_attr( $row->phone ? $row->phone : '' ); ?>">
-							<?php if ( $row->phone ) : ?>
-								<button type="button" class="button-link sp-check-courier" <?php disabled( ! $active ); ?>><span class="dashicons dashicons-search"></span> <?php esc_html_e( 'Check ratio', 'shopify-pulse-connector' ); ?></button>
-							<?php endif; ?>
+				<td data-label="<?php esc_attr_e( 'Customer', 'shopify-pulse-connector' ); ?>">
+					<div class="sp-td-val">
+						<div class="sp-cust"><?php echo esc_html( $row->customer_name ? $row->customer_name : __( 'Anonymous', 'shopify-pulse-connector' ) ); ?></div>
+						<div class="sp-contact">
+							<?php if ( $row->phone ) : ?><span>📞 <?php echo esc_html( $row->phone ); ?></span><br /><?php endif; ?>
+							<?php if ( $row->email ) : ?><span>✉ <?php echo esc_html( $row->email ); ?></span><?php endif; ?>
 						</div>
-					<?php endif; ?>
+						<?php if ( $row->phone ) : ?>
+							<div class="sp-courier" data-phone="<?php echo esc_attr( $row->phone ); ?>">
+								<button type="button" class="button-link sp-check-courier" <?php disabled( ! $active ); ?>><span class="dashicons dashicons-search"></span> <?php esc_html_e( 'Check ratio', 'shopify-pulse-connector' ); ?></button>
+							</div>
+						<?php endif; ?>
+					</div>
 				</td>
-				<td class="sp-addr">
-					<?php echo $addr_bits ? esc_html( implode( ', ', $addr_bits ) ) : '<span class="sp-dim">—</span>'; ?>
+				<td class="sp-addr" data-label="<?php esc_attr_e( 'Address', 'shopify-pulse-connector' ); ?>">
+					<span class="sp-td-val"><?php echo $addr_bits ? esc_html( implode( ', ', $addr_bits ) ) : '<span class="sp-dim">—</span>'; ?></span>
 				</td>
-				<td>
-					<div class="sp-mono"><?php echo esc_html( sprintf( _n( '%d item', '%d items', $count, 'shopify-pulse-connector' ), $count ) ); ?></div>
-					<?php if ( $first ) : ?><div class="sp-contact"><?php echo esc_html( wp_html_excerpt( $first, 42, '…' ) ); ?></div><?php endif; ?>
+				<td data-label="<?php esc_attr_e( 'Cart', 'shopify-pulse-connector' ); ?>">
+					<div class="sp-td-val">
+						<div class="sp-mono"><?php echo esc_html( sprintf( _n( '%d item', '%d items', $count, 'shopify-pulse-connector' ), $count ) ); ?></div>
+						<?php if ( $first ) : ?><div class="sp-contact"><?php echo esc_html( wp_html_excerpt( $first, 42, '…' ) ); ?></div><?php endif; ?>
+					</div>
 				</td>
-				<td class="sp-mono"><?php echo esc_html( $this->money( $row->subtotal, $row->currency ? $row->currency : $currency ) ); ?></td>
-				<td><?php echo esc_html( $row->furthest_step ? ucfirst( (string) $row->furthest_step ) : '—' ); ?></td>
-				<td>
-					<span class="sp-badge <?php echo esc_attr( $status_tone ); ?>"><?php echo esc_html( $status_label ); ?></span>
-					<?php if ( 'converted' === $row->status && $row->wc_order_id ) : ?>
-						<div><a class="sp-dim" href="<?php echo esc_url( $this->order_edit_url( $row->wc_order_id ) ); ?>">#<?php echo (int) $row->wc_order_id; ?> →</a></div>
-					<?php endif; ?>
+				<td class="sp-mono" data-label="<?php esc_attr_e( 'Value', 'shopify-pulse-connector' ); ?>"><span class="sp-td-val"><?php echo esc_html( $this->money( $row->subtotal, $row->currency ? $row->currency : $currency ) ); ?></span></td>
+				<td data-label="<?php esc_attr_e( 'Step', 'shopify-pulse-connector' ); ?>"><span class="sp-td-val"><?php echo esc_html( $row->furthest_step ? ucfirst( (string) $row->furthest_step ) : '—' ); ?></span></td>
+				<td data-label="<?php esc_attr_e( 'Status', 'shopify-pulse-connector' ); ?>">
+					<span class="sp-td-val">
+						<span class="sp-badge <?php echo esc_attr( $status_tone ); ?>"><?php echo esc_html( $status_label ); ?></span>
+						<?php if ( 'converted' === $row->status && $row->wc_order_id ) : ?>
+							<a class="sp-dim" href="<?php echo esc_url( $this->order_edit_url( $row->wc_order_id ) ); ?>">#<?php echo (int) $row->wc_order_id; ?> →</a>
+						<?php endif; ?>
+					</span>
 				</td>
-				<td class="sp-dim sp-nowrap"><?php echo esc_html( $row->updated_at ? human_time_diff( strtotime( $row->updated_at . ' UTC' ) ) . ' ' . __( 'ago', 'shopify-pulse-connector' ) : '—' ); ?></td>
-				<td class="sp-actions-cell">
-					<button type="button" class="button button-small sp-act" data-op="details"><?php esc_html_e( 'Details', 'shopify-pulse-connector' ); ?></button>
-					<?php if ( $is_active ) : ?>
-						<button type="button" class="button button-small button-primary sp-act" data-op="convert"><?php esc_html_e( 'Convert', 'shopify-pulse-connector' ); ?></button>
-						<button type="button" class="button button-small sp-act" data-op="resync" <?php disabled( ! $active || ! $reachable ); ?>><?php esc_html_e( 'Resync', 'shopify-pulse-connector' ); ?></button>
-						<button type="button" class="button button-small sp-act" data-op="cancel"><?php esc_html_e( 'Cancel', 'shopify-pulse-connector' ); ?></button>
-						<button type="button" class="button button-small sp-act" data-op="fake"><?php esc_html_e( 'Fake', 'shopify-pulse-connector' ); ?></button>
-					<?php elseif ( 'cancelled' === $row->status || 'fake' === $row->status ) : ?>
-						<button type="button" class="button button-small sp-act" data-op="reopen"><?php esc_html_e( 'Reopen', 'shopify-pulse-connector' ); ?></button>
-					<?php endif; ?>
-					<button type="button" class="button button-small sp-act sp-danger" data-op="delete"><?php esc_html_e( 'Delete', 'shopify-pulse-connector' ); ?></button>
+				<td class="sp-dim" data-label="<?php esc_attr_e( 'Updated', 'shopify-pulse-connector' ); ?>"><span class="sp-td-val"><?php echo esc_html( $row->updated_at ? human_time_diff( strtotime( $row->updated_at . ' UTC' ) ) . ' ' . __( 'ago', 'shopify-pulse-connector' ) : '—' ); ?></span></td>
+				<td class="sp-actions-cell" data-label="<?php esc_attr_e( 'Actions', 'shopify-pulse-connector' ); ?>">
+					<div class="sp-menu-wrap">
+						<button type="button" class="button button-small sp-menu-btn" aria-haspopup="true" aria-expanded="false"><?php esc_html_e( 'Actions', 'shopify-pulse-connector' ); ?> <span class="sp-caret">▾</span></button>
+						<div class="sp-menu" hidden>
+							<button type="button" class="sp-act" data-op="details"><span class="dashicons dashicons-visibility"></span> <?php esc_html_e( 'Details', 'shopify-pulse-connector' ); ?></button>
+							<?php if ( $is_active ) : ?>
+								<button type="button" class="sp-act sp-primary" data-op="convert"><span class="dashicons dashicons-cart"></span> <?php esc_html_e( 'Convert to order', 'shopify-pulse-connector' ); ?></button>
+								<button type="button" class="sp-act" data-op="resync" <?php disabled( ! $active ); ?>><span class="dashicons dashicons-update"></span> <?php esc_html_e( 'Resync', 'shopify-pulse-connector' ); ?></button>
+								<button type="button" class="sp-act" data-op="cancel"><span class="dashicons dashicons-no-alt"></span> <?php esc_html_e( 'Cancel', 'shopify-pulse-connector' ); ?></button>
+								<button type="button" class="sp-act" data-op="fake"><span class="dashicons dashicons-flag"></span> <?php esc_html_e( 'Mark fake', 'shopify-pulse-connector' ); ?></button>
+							<?php elseif ( 'cancelled' === $row->status || 'fake' === $row->status ) : ?>
+								<button type="button" class="sp-act" data-op="reopen"><span class="dashicons dashicons-backup"></span> <?php esc_html_e( 'Reopen', 'shopify-pulse-connector' ); ?></button>
+							<?php endif; ?>
+							<button type="button" class="sp-act sp-danger" data-op="delete"><span class="dashicons dashicons-trash"></span> <?php esc_html_e( 'Delete', 'shopify-pulse-connector' ); ?></button>
+						</div>
+					</div>
 				</td>
 			</tr>
 			<?php
@@ -667,16 +675,37 @@ class Shopify_Pulse_Abandoned_Admin {
 				.sp-contact{color:var(--muted);font-size:12px;margin-top:2px;line-height:1.5}
 				.sp-courier{margin-top:4px}
 				.sp-mono{font-variant-numeric:tabular-nums}
-				.sp-actions-cell{white-space:nowrap}
-				.sp-actions-cell .button{margin:0 2px 2px 0}
-				.sp-danger{color:var(--err);border-color:#b32d2e55}
+				.sp-actions-cell{text-align:right;white-space:nowrap}
+				.sp-menu-wrap{position:relative;display:inline-block}
+				.sp-menu-btn .sp-caret{font-size:10px;opacity:.7}
+				.sp-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:50;min-width:180px;background:#fff;border:1px solid var(--bd);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);padding:5px;display:flex;flex-direction:column;gap:1px}
+				.sp-menu[hidden]{display:none}
+				.sp-menu .sp-act{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:5px;padding:7px 9px;font-size:13px;color:#1d2327;cursor:pointer}
+				.sp-menu .sp-act:hover{background:#f0f6fc}
+				.sp-menu .sp-act[disabled]{opacity:.4;cursor:not-allowed}
+				.sp-menu .sp-act .dashicons{font-size:16px;width:16px;height:16px;color:var(--muted)}
+				.sp-menu .sp-primary{color:var(--pri);font-weight:600}.sp-menu .sp-primary .dashicons{color:var(--pri)}
+				.sp-menu .sp-danger{color:var(--err)}.sp-menu .sp-danger .dashicons{color:var(--err)}
 				.sp-empty{padding:40px 16px;text-align:center;color:var(--muted)}
 				.sp-ab .sp-msg{font-size:12px}
 				.sp-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px}
 				.sp-modal{background:#fff;border-radius:8px;max-width:560px;width:100%;max-height:85vh;overflow:auto;padding:20px;position:relative}
 				.sp-modal .sp-x{position:absolute;top:10px;right:12px;cursor:pointer;font-size:20px;color:var(--muted);background:none;border:0}
 				.sp-dl h3{margin:0 0 4px}
-				@media(max-width:900px){.sp-funnel__row{grid-template-columns:90px 1fr 40px}.sp-tbl thead{display:none}.sp-tbl,.sp-tbl tbody,.sp-tbl tr,.sp-tbl td{display:block;width:100%}.sp-tbl tr{border-bottom:1px solid var(--bd);padding:6px 0}.sp-tbl td{border:0;padding:4px 12px}}
+				@media(max-width:860px){
+					.sp-funnel__row{grid-template-columns:90px 1fr 40px}
+					.sp-toolbar{gap:8px}.sp-toolbar>div{flex:1 1 140px}.sp-toolbar input,.sp-toolbar select{width:100%}
+					.sp-tbl thead{display:none}
+					.sp-tbl,.sp-tbl tbody{display:block;width:100%}
+					.sp-tbl tr{display:block;border:1px solid var(--bd);border-radius:8px;margin:0 0 10px;padding:8px 10px}
+					.sp-tbl td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border:0;padding:6px 0;text-align:right}
+					.sp-tbl td::before{content:attr(data-label);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:left;flex:0 0 auto}
+					.sp-tbl td .sp-td-val{text-align:right}
+					.sp-tbl td.sp-cb-cell{justify-content:flex-start}.sp-tbl td.sp-cb-cell::before{content:none}
+					.sp-tbl td.sp-actions-cell{justify-content:flex-end}.sp-tbl td.sp-actions-cell::before{content:none}
+					.sp-menu{right:0;left:auto}
+				}
+				@media(max-width:480px){.sp-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 			</style>
 
 			<div class="sp-top">
@@ -871,8 +900,23 @@ class Shopify_Pulse_Abandoned_Admin {
 			if ( clear ) { clear.addEventListener( 'click', function () { search.value=''; product.value='0'; from.value=''; to.value=''; runQuery(); } ); }
 
 			// ── Row actions (delegated) ────────────────────────────────────
-			function bindRows() {
+			function closeMenus( except ) {
+					Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-menu' ), function ( m ) {
+						if ( m !== except ) { m.hidden = true; var b = m.parentNode.querySelector( '.sp-menu-btn' ); if ( b ) { b.setAttribute( 'aria-expanded', 'false' ); } }
+					} );
+				}
+				function bindRows() {
 					Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-cb' ), function ( c ) { c.addEventListener( 'change', updateBulkCount ); } );
+					Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-menu-btn' ), function ( btn ) {
+						btn.addEventListener( 'click', function ( e ) {
+							e.stopPropagation();
+							var menu = btn.parentNode.querySelector( '.sp-menu' );
+							var willOpen = menu.hidden;
+							closeMenus( menu );
+							menu.hidden = ! willOpen;
+							btn.setAttribute( 'aria-expanded', willOpen ? 'true' : 'false' );
+						} );
+					} );
 				Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-check-courier' ), function ( btn ) {
 					btn.addEventListener( 'click', function () {
 						var wrap = btn.closest( '.sp-courier' );
@@ -899,7 +943,7 @@ class Shopify_Pulse_Abandoned_Admin {
 						var tr = btn.closest( 'tr' );
 						var key = tr ? tr.getAttribute( 'data-key' ) : '';
 						var op = btn.getAttribute( 'data-op' );
-						if ( op === 'details' ) { openDetails( key ); return; }
+						if ( op === 'details' ) { closeMenus( null ); openDetails( key ); return; }
 						if ( op === 'delete' && ! window.confirm( strings.confirmDel ) ) { return; }
 						if ( op === 'fake' && ! window.confirm( strings.confirmFake ) ) { return; }
 						if ( op === 'resync' ) {
@@ -940,8 +984,11 @@ class Shopify_Pulse_Abandoned_Admin {
 			bindRows();
 
 			// ── Resync all ─────────────────────────────────────────────────
-			// ── Select-all + bulk actions ──────────────────────────────────
-			if ( cbAll ) {
+			// Close any open row-action menu on an outside click.
+				document.addEventListener( 'click', function () { closeMenus( null ); } );
+
+				// ── Select-all + bulk actions ──────────────────────────────────
+				if ( cbAll ) {
 					cbAll.addEventListener( 'change', function () {
 						Array.prototype.forEach.call( rowsBody.querySelectorAll( '.sp-cb' ), function ( c ) { c.checked = cbAll.checked; } );
 						updateBulkCount();
