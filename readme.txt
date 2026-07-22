@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.7.0
+Stable tag: 1.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.7.1 =
+* Fix: the connected store's name + permissions now appear automatically on the settings page (back-filled from the platform once), instead of only after a manual "Verify connection" — so a connection made before this info existed shows it without re-verifying.
 
 = 1.7.0 =
 * Blocked-checkout popup: when fraud screening or the courier gate stops an order, the shopper now sees a modern, clear popup explaining why — with Call / WhatsApp buttons so a genuine buyer can still reach you. Set the number under Settings → fraud (or it falls back to the connected store's contact).
