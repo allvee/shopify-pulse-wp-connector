@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.7.3
+Stable tag: 1.7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.7.4 =
+* Recovered carts now close on the platform automatically. When a shopper abandons the checkout (the cart is captured to the platform) and then comes back and completes the order, that order now carries the cart's fingerprint, so the platform marks the matching abandoned cart "recovered" and links it to the order — it drops out of the recovery inbox and no recovery reminder is sent for a purchase already made. Older behaviour only cleared the cart locally. Needs the platform build that accepts the order's cart fingerprint (falls back to phone/email matching otherwise).
 
 = 1.7.3 =
 * Blocked-checkout popup messages are now fully editable and Bangla by default. Under Settings → Checkout messages you can set the exact text a shopper sees for each block reason — courier delivery gate, unverified contact details, too-many-attempts, a generic fallback, and the "need help?" line above the Call / WhatsApp buttons. The courier message supports {ratio} and {parcels} tokens. Leave a box blank to keep the built-in default. Ships with sensible Bangla defaults for BD/COD stores; write English or both if you prefer.

@@ -384,6 +384,21 @@ class Shopify_Pulse_Abandoned_Sync {
 			}
 			global $wpdb;
 			$wpdb->update( self::table_name(), $data, array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
+
+			// Stamp the cart fingerprint on the order so the order push can tell the
+			// platform which abandoned checkout this order recovered — same key the
+			// abandoned push used (sha256(sid|session_key)) — so the platform closes
+			// the matching recovery-inbox row instead of chasing an already-bought cart.
+			if ( $order_id ) {
+				$sid = $this->settings->get_sid();
+				if ( ! empty( $sid ) ) {
+					$order = wc_get_order( $order_id );
+					if ( $order ) {
+						$order->update_meta_data( '_sp_cart_fingerprint', hash( 'sha256', $sid . '|' . $session_key ) );
+						$order->save();
+					}
+				}
+			}
 		} catch ( \Throwable $e ) {
 			// Never let cart bookkeeping break the order the shopper just placed.
 			$this->logger->error( 'Abandoned mark_converted error (order kept): ' . $e->getMessage() );
