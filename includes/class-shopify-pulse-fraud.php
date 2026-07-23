@@ -66,7 +66,11 @@ class Shopify_Pulse_Fraud {
 			return;
 		}
 		wp_enqueue_script( 'sp-checkout-guard', SHOPIFY_PULSE_URL . 'assets/js/sp-checkout-guard.js', array( 'jquery' ), SHOPIFY_PULSE_VERSION, true );
-		$c = $this->support_contact();
+		$c    = $this->support_contact();
+		$help = trim( (string) $this->settings->get( 'msg_help' ) );
+		if ( '' === $help ) {
+			$help = __( 'Need help completing your order? Reach us:', 'shopify-pulse-connector' );
+		}
 		wp_localize_script(
 			'sp-checkout-guard',
 			'SPGuard',
@@ -80,7 +84,7 @@ class Shopify_Pulse_Fraud {
 					'callBtn' => __( 'Call', 'shopify-pulse-connector' ),
 					'waBtn'   => __( 'WhatsApp us', 'shopify-pulse-connector' ),
 					'close'   => __( 'Close', 'shopify-pulse-connector' ),
-					'help'    => __( 'Need help completing your order? Reach us:', 'shopify-pulse-connector' ),
+					'help'    => $help,
 				),
 			)
 		);
@@ -103,9 +107,9 @@ class Shopify_Pulse_Fraud {
 	}
 
 	/** Stash a block for the checkout-guard modal to pick up. */
-	private function stash_block( $type, $title, $message ) {
+	private function stash_block( $type, $message ) {
 		if ( function_exists( 'WC' ) && WC()->session ) {
-			WC()->session->set( 'sp_guard_block', array( 'type' => $type, 'title' => $title, 'message' => wp_strip_all_tags( (string) $message ) ) );
+			WC()->session->set( 'sp_guard_block', array( 'type' => $type, 'message' => wp_strip_all_tags( (string) $message ) ) );
 		}
 	}
 
@@ -137,21 +141,6 @@ class Shopify_Pulse_Fraud {
 		);
 	}
 
-	/** Friendly title for a fraud verdict, by layer. */
-	private function block_title( $verdict ) {
-		$layer = isset( $verdict['layer'] ) ? strtolower( (string) $verdict['layer'] ) : '';
-		if ( in_array( $layer, array( '1', 'contact', 'phone', 'name', 'address', 'heuristic' ), true ) ) {
-			return __( 'Your contact details could not be verified', 'shopify-pulse-connector' );
-		}
-		if ( in_array( $layer, array( '2', 'ip', 'velocity' ), true ) ) {
-			return __( 'Too many attempts — please try again later', 'shopify-pulse-connector' );
-		}
-		if ( in_array( $layer, array( '3', 'courier', 'delivery' ), true ) ) {
-			return __( 'This order can’t be delivered right now', 'shopify-pulse-connector' );
-		}
-		return __( 'We can’t place this order', 'shopify-pulse-connector' );
-	}
-
 	/** Whether the operator has armed the courier delivery-ratio gate. */
 	private function courier_gate_enabled() {
 		return (int) $this->settings->get( 'courier_min_ratio' ) > 0;
@@ -175,7 +164,7 @@ class Shopify_Pulse_Fraud {
 		// and runs even when the full fraud screen is disabled.
 		$courier_msg = $this->courier_block_message( $phone );
 		if ( $courier_msg ) {
-			$this->stash_block( 'courier', __( 'This order can’t be delivered right now', 'shopify-pulse-connector' ), $courier_msg );
+			$this->stash_block( 'courier', $courier_msg );
 			$errors->add( 'sp_courier', $courier_msg );
 			return;
 		}
@@ -190,7 +179,7 @@ class Shopify_Pulse_Fraud {
 
 		$action = $this->settings->get( 'fraud_action' );
 		if ( 'block' === $action ) {
-			$this->stash_block( 'fraud', $this->block_title( $verdict ), $this->message( $verdict ) );
+			$this->stash_block( 'fraud', $this->message( $verdict ) );
 			$errors->add( 'sp_fraud', $this->message( $verdict ) );
 			return;
 		}
@@ -347,7 +336,21 @@ class Shopify_Pulse_Fraud {
 		return $ctx;
 	}
 
+	/** The operator-configured block message for this verdict's layer (falling
+	 *  back to the platform message, then a built-in default). */
 	private function message( $verdict ) {
+		$layer = isset( $verdict['layer'] ) ? strtolower( (string) $verdict['layer'] ) : '';
+		if ( in_array( $layer, array( '2', 'ip', 'velocity' ), true ) ) {
+			$key = 'msg_fraud_velocity';
+		} elseif ( in_array( $layer, array( '1', 'contact', 'phone', 'name', 'address', 'heuristic' ), true ) ) {
+			$key = 'msg_fraud_contact';
+		} else {
+			$key = 'msg_fraud_generic';
+		}
+		$custom = trim( (string) $this->settings->get( $key ) );
+		if ( '' !== $custom ) {
+			return $custom;
+		}
 		return ! empty( $verdict['message'] )
 			? $verdict['message']
 			: __( 'This order could not be accepted. Please contact support.', 'shopify-pulse-connector' );
@@ -418,11 +421,16 @@ class Shopify_Pulse_Fraud {
 				$min
 			)
 		);
-		return sprintf(
-			/* translators: 1: delivery-success percentage, 2: number of past parcels */
-			__( 'We are unable to accept this order for delivery right now (courier delivery-success rate %1$s%% over %2$d past parcels). Please contact us to complete your purchase.', 'shopify-pulse-connector' ),
-			(string) round( (float) $ratio ),
-			(int) $parcels
+		$template = trim( (string) $this->settings->get( 'msg_courier' ) );
+		if ( '' === $template ) {
+			$template = __( 'We are unable to accept this order for delivery right now (courier delivery-success rate {ratio}% over {parcels} past parcels). Please contact us to complete your purchase.', 'shopify-pulse-connector' );
+		}
+		return strtr(
+			$template,
+			array(
+				'{ratio}'   => (string) round( (float) $ratio ),
+				'{parcels}' => (string) (int) $parcels,
+			)
 		);
 	}
 

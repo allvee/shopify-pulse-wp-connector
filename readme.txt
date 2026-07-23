@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.7.2
+Stable tag: 1.7.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.7.3 =
+* Blocked-checkout popup messages are now fully editable and Bangla by default. Under Settings → Checkout messages you can set the exact text a shopper sees for each block reason — courier delivery gate, unverified contact details, too-many-attempts, a generic fallback, and the "need help?" line above the Call / WhatsApp buttons. The courier message supports {ratio} and {parcels} tokens. Leave a box blank to keep the built-in default. Ships with sensible Bangla defaults for BD/COD stores; write English or both if you prefer.
 
 = 1.7.2 =
 * Critical fix: the plugin can no longer block a WooCommerce checkout. Every hook that runs while placing an order (fraud/courier screen, abandoned-cart capture + convert bookkeeping, attribution, order-sync scheduling) is now wrapped so any unexpected error is logged and the order still goes through. If you saw "There was an error processing your order" after installing, update to this version. Check WooCommerce → Status → Logs (source: shopify-pulse) for the underlying cause.

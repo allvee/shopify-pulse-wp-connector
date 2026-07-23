@@ -34,7 +34,7 @@
 			'.spg-x{position:absolute;top:10px;right:14px;border:0;background:none;font-size:24px;line-height:1;color:#94a3b8;cursor:pointer}' +
 			'.spg-ic{width:56px;height:56px;margin:2px auto 12px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;color:#dc2626}' +
 			'.spg-ic svg{width:30px;height:30px}' +
-			'.spg h3{margin:0 0 6px;font-size:19px;color:#0f172a}' +
+			'.spg-msg{margin:0 0 10px;font-size:16px;line-height:1.55;color:#0f172a;font-weight:600}' +
 			'.spg p{margin:0 0 10px;font-size:14px;line-height:1.5;color:#475569}' +
 			'.spg-help{margin-top:14px;font-weight:600;color:#0f172a}' +
 			'.spg-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:6px}' +
@@ -50,7 +50,7 @@
 		'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
 		'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
-	function showModal( title, message ) {
+	function showModal( message ) {
 		injectStyle();
 		$( '.spg-bg' ).remove();
 		var telDigits = ( G.phone || '' ).replace( /[^0-9+]/g, '' );
@@ -65,11 +65,10 @@
 		}
 		var contactBlock = buttons ? '<p class="spg-help">' + esc( G.i18n.help ) + '</p><div class="spg-btns">' + buttons + '</div>' : '';
 		var $m = $(
-			'<div class="spg-bg"><div class="spg" role="dialog" aria-modal="true" aria-label="' + esc( title ) + '">' +
+			'<div class="spg-bg"><div class="spg" role="dialog" aria-modal="true" aria-label="' + esc( G.i18n.title ) + '">' +
 			'<button class="spg-x" aria-label="' + esc( G.i18n.close ) + '">×</button>' +
 			'<div class="spg-ic">' + ALERT_SVG + '</div>' +
-			'<h3>' + esc( title ) + '</h3>' +
-			'<p>' + esc( message ) + '</p>' +
+			'<p class="spg-msg">' + esc( message ) + '</p>' +
 			contactBlock +
 			'</div></div>'
 		);
@@ -84,7 +83,7 @@
 	$( document.body ).on( 'checkout_error', function () {
 		$.post( G.ajaxUrl, { action: 'shopify_pulse_guard', nonce: G.nonce } ).done( function ( res ) {
 			if ( res && res.success && res.data && res.data.message ) {
-				showModal( res.data.title || G.i18n.title, res.data.message );
+				showModal( res.data.message );
 			}
 		} );
 	} );

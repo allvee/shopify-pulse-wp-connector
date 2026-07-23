@@ -43,6 +43,14 @@ class Shopify_Pulse_Settings {
 			// tenant's contact number.
 			'support_phone'         => '',
 			'support_whatsapp'      => '',
+			// Configurable checkout block messages, per case (Bangla defaults; the
+			// operator can set any language). Blank = the built-in default.
+			// {ratio} and {parcels} tokens are substituted in the courier message.
+			'msg_courier'           => 'দুঃখিত, এই মোবাইল নম্বরে কুরিয়ার ডেলিভারি সফলতার হার কম ({ratio}% — {parcels}টি পার্সেলের মধ্যে)। অর্ডারটি নিশ্চিত করতে আমাদের সাথে যোগাযোগ করুন।',
+			'msg_fraud_contact'     => 'আপনার দেওয়া তথ্য যাচাই করা যায়নি। সঠিক নাম, মোবাইল নম্বর ও ঠিকানা দিয়ে আবার চেষ্টা করুন অথবা আমাদের সাথে যোগাযোগ করুন।',
+			'msg_fraud_velocity'    => 'অল্প সময়ে অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন অথবা আমাদের সাথে যোগাযোগ করুন।',
+			'msg_fraud_generic'     => 'দুঃখিত, এই মুহূর্তে অর্ডারটি গ্রহণ করা যাচ্ছে না। সহায়তার জন্য আমাদের সাথে যোগাযোগ করুন।',
+			'msg_help'              => 'অর্ডার সম্পন্ন করতে সাহায্য দরকার? আমাদের সাথে যোগাযোগ করুন:',
 			'enable_customer_sync'  => 0,
 			'customer_sync_dir'     => 'both',
 			// Catalog is three independently-controlled entities, each with its
@@ -291,6 +299,9 @@ class Shopify_Pulse_Settings {
 		$clean['courier_min_parcels']   = max( 1, absint( isset( $raw['courier_min_parcels'] ) ? $raw['courier_min_parcels'] : 3 ) );
 		$clean['support_phone']         = sanitize_text_field( isset( $raw['support_phone'] ) ? $raw['support_phone'] : '' );
 		$clean['support_whatsapp']      = sanitize_text_field( isset( $raw['support_whatsapp'] ) ? $raw['support_whatsapp'] : '' );
+		foreach ( array( 'msg_courier', 'msg_fraud_contact', 'msg_fraud_velocity', 'msg_fraud_generic', 'msg_help' ) as $mk ) {
+			$clean[ $mk ] = isset( $raw[ $mk ] ) ? sanitize_textarea_field( $raw[ $mk ] ) : '';
+		}
 		$clean['enable_customer_sync']  = empty( $raw['enable_customer_sync'] ) ? 0 : 1;
 		$cust_dir                       = isset( $raw['customer_sync_dir'] ) ? sanitize_key( $raw['customer_sync_dir'] ) : 'both';
 		$clean['customer_sync_dir']     = in_array( $cust_dir, array( 'push', 'pull', 'both' ), true ) ? $cust_dir : 'both';
@@ -796,6 +807,32 @@ class Shopify_Pulse_Settings {
 									<input name="sp[support_whatsapp]" id="sp_support_whatsapp" type="text" value="<?php echo esc_attr( $s['support_whatsapp'] ); ?>" placeholder="<?php esc_attr_e( 'WhatsApp, e.g. 8801XXXXXXXXX', 'shopify-pulse-connector' ); ?>" style="flex:1 1 180px;" />
 								</div>
 								<p class="description"><?php esc_html_e( 'When fraud or the courier gate blocks a checkout, the shopper sees a popup with these Call / WhatsApp buttons so a genuine buyer can still reach you. Leave blank to use the connected store’s contact number.', 'shopify-pulse-connector' ); ?></p>
+							</div>
+						</div>
+						<div class="sp-card__head" style="border-top:1px solid var(--bd);"><span class="dashicons dashicons-format-chat"></span><?php esc_html_e( 'Checkout messages', 'shopify-pulse-connector' ); ?></div>
+						<div class="sp-card__body">
+							<p class="description" style="margin-top:0;"><?php esc_html_e( 'The exact text a shopper sees when checkout is blocked. Write it in Bangla, English, or both. Leave a box blank to use the built-in default.', 'shopify-pulse-connector' ); ?></p>
+							<div class="sp-field">
+								<label class="h" for="sp_msg_courier"><?php esc_html_e( 'Courier delivery gate', 'shopify-pulse-connector' ); ?></label>
+								<textarea name="sp[msg_courier]" id="sp_msg_courier" rows="2" style="width:100%;"><?php echo esc_textarea( $s['msg_courier'] ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'Tokens: {ratio} = delivery-success %, {parcels} = past parcel count.', 'shopify-pulse-connector' ); ?></p>
+							</div>
+							<div class="sp-field">
+								<label class="h" for="sp_msg_fraud_contact"><?php esc_html_e( 'Fraud — details could not be verified', 'shopify-pulse-connector' ); ?></label>
+								<textarea name="sp[msg_fraud_contact]" id="sp_msg_fraud_contact" rows="2" style="width:100%;"><?php echo esc_textarea( $s['msg_fraud_contact'] ); ?></textarea>
+							</div>
+							<div class="sp-field">
+								<label class="h" for="sp_msg_fraud_velocity"><?php esc_html_e( 'Fraud — too many attempts', 'shopify-pulse-connector' ); ?></label>
+								<textarea name="sp[msg_fraud_velocity]" id="sp_msg_fraud_velocity" rows="2" style="width:100%;"><?php echo esc_textarea( $s['msg_fraud_velocity'] ); ?></textarea>
+							</div>
+							<div class="sp-field">
+								<label class="h" for="sp_msg_fraud_generic"><?php esc_html_e( 'Fraud — other / fallback', 'shopify-pulse-connector' ); ?></label>
+								<textarea name="sp[msg_fraud_generic]" id="sp_msg_fraud_generic" rows="2" style="width:100%;"><?php echo esc_textarea( $s['msg_fraud_generic'] ); ?></textarea>
+							</div>
+							<div class="sp-field">
+								<label class="h" for="sp_msg_help"><?php esc_html_e( 'Popup contact prompt', 'shopify-pulse-connector' ); ?></label>
+								<input name="sp[msg_help]" id="sp_msg_help" type="text" value="<?php echo esc_attr( $s['msg_help'] ); ?>" style="width:100%;" />
+								<p class="description"><?php esc_html_e( 'Line shown above the Call / WhatsApp buttons in the blocked-checkout popup.', 'shopify-pulse-connector' ); ?></p>
 							</div>
 						</div>
 					</div>
