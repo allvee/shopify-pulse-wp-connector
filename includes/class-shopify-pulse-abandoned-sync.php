@@ -102,6 +102,7 @@ class Shopify_Pulse_Abandoned_Sync {
 
 	/** Snapshot the current cart into the capture table. */
 	public function capture() {
+		try {
 		if ( ! $this->settings->get( 'enable_abandoned' ) ) {
 			return;
 		}
@@ -188,6 +189,10 @@ class Shopify_Pulse_Abandoned_Sync {
 		// the sweep. Carts with no contact yet fall through to the sweep.
 		if ( ! empty( $email ) || ! empty( $phone ) ) {
 			$this->schedule_instant_push( $session_key );
+		}
+		} catch ( \Throwable $e ) {
+			// Abandoned capture must never disrupt the cart/checkout experience.
+			$this->logger->error( 'Abandoned capture error (ignored): ' . $e->getMessage() );
 		}
 	}
 
@@ -365,19 +370,24 @@ class Shopify_Pulse_Abandoned_Sync {
 	 * in {@see sweep()} prunes it later.
 	 */
 	public function mark_converted( $order_id ) {
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
+		try {
+			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+				return;
+			}
+			$session_key = WC()->session->get_customer_id();
+			if ( empty( $session_key ) ) {
+				return;
+			}
+			$data = array( 'status' => 'converted', 'converted' => 1, 'updated_at' => current_time( 'mysql', true ) );
+			if ( $order_id ) {
+				$data['wc_order_id'] = (int) $order_id;
+			}
+			global $wpdb;
+			$wpdb->update( self::table_name(), $data, array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
+		} catch ( \Throwable $e ) {
+			// Never let cart bookkeeping break the order the shopper just placed.
+			$this->logger->error( 'Abandoned mark_converted error (order kept): ' . $e->getMessage() );
 		}
-		$session_key = WC()->session->get_customer_id();
-		if ( empty( $session_key ) ) {
-			return;
-		}
-		$data = array( 'status' => 'converted', 'converted' => 1, 'updated_at' => current_time( 'mysql', true ) );
-		if ( $order_id ) {
-			$data['wc_order_id'] = (int) $order_id;
-		}
-		global $wpdb;
-		$wpdb->update( self::table_name(), $data, array( 'session_key' => $session_key ) ); // phpcs:ignore WordPress.DB
 	}
 
 	public function mark_converted_order( $order ) {

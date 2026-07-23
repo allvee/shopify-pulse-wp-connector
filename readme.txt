@@ -6,7 +6,7 @@ Tested up to: 6.7
 Requires PHP: 7.4
 WC requires at least: 6.0
 WC tested up to: 9.9
-Stable tag: 1.7.1
+Stable tag: 1.7.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ No — one WooCommerce site connects to one Shopify Pulse store (one OAuth app =
 store). Run separate sites for separate stores.
 
 == Changelog ==
+
+= 1.7.2 =
+* Critical fix: the plugin can no longer block a WooCommerce checkout. Every hook that runs while placing an order (fraud/courier screen, abandoned-cart capture + convert bookkeeping, attribution, order-sync scheduling) is now wrapped so any unexpected error is logged and the order still goes through. If you saw "There was an error processing your order" after installing, update to this version. Check WooCommerce → Status → Logs (source: shopify-pulse) for the underlying cause.
 
 = 1.7.1 =
 * Fix: the connected store's name + permissions now appear automatically on the settings page (back-filled from the platform once), instead of only after a manual "Verify connection" — so a connection made before this info existed shows it without re-verifying.
