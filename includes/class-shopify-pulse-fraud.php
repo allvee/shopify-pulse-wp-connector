@@ -164,6 +164,7 @@ class Shopify_Pulse_Fraud {
 	 * @param WP_Error $errors
 	 */
 	public function screen_classic( $data, $errors ) {
+		try {
 		$name    = trim( ( isset( $data['billing_first_name'] ) ? $data['billing_first_name'] : '' ) . ' ' . ( isset( $data['billing_last_name'] ) ? $data['billing_last_name'] : '' ) );
 		$phone   = isset( $data['billing_phone'] ) ? $data['billing_phone'] : '';
 		$address = isset( $data['shipping_address_1'] ) && '' !== $data['shipping_address_1']
@@ -195,6 +196,10 @@ class Shopify_Pulse_Fraud {
 		}
 		// hold / flag: let the order be created, then act on it.
 		$this->stash( $verdict );
+		} catch ( \Throwable $e ) {
+			// A connector must NEVER break the merchant's checkout — fail open.
+			$this->logger->error( 'Fraud/courier screen error (allowing checkout): ' . $e->getMessage() );
+		}
 	}
 
 	/**
@@ -247,20 +252,28 @@ class Shopify_Pulse_Fraud {
 
 	/** hold/flag for classic checkout (order id). */
 	public function apply_to_order( $order_id ) {
-		$verdict = $this->pop();
-		if ( ! $verdict ) {
-			return;
-		}
-		$order = wc_get_order( $order_id );
-		if ( $order ) {
-			$this->apply( $order, $verdict );
+		try {
+			$verdict = $this->pop();
+			if ( ! $verdict ) {
+				return;
+			}
+			$order = wc_get_order( $order_id );
+			if ( $order ) {
+				$this->apply( $order, $verdict );
+			}
+		} catch ( \Throwable $e ) {
+			$this->logger->error( 'Fraud apply_to_order error (order kept): ' . $e->getMessage() );
 		}
 	}
 
 	/** hold/flag for Store API checkout (order object). */
 	public function apply_to_order_obj( $order ) {
-		if ( is_object( $order ) && method_exists( $order, 'get_id' ) ) {
-			$this->apply( $order, null );
+		try {
+			if ( is_object( $order ) && method_exists( $order, 'get_id' ) ) {
+				$this->apply( $order, null );
+			}
+		} catch ( \Throwable $e ) {
+			$this->logger->error( 'Fraud apply_to_order_obj error (order kept): ' . $e->getMessage() );
 		}
 	}
 

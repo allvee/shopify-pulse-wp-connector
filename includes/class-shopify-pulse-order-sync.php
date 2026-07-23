@@ -46,31 +46,37 @@ class Shopify_Pulse_Order_Sync {
 	 * Queue (or, without Action Scheduler, run) a push for an order.
 	 */
 	public function enqueue( $order_id, $is_backfill = false ) {
-		if ( ! $this->settings->get( 'enable_orders' ) ) {
-			return;
-		}
-		// Don't echo back a change the platform just wrote to us.
-		if ( Shopify_Pulse_Status_Poller::is_writing_back() ) {
-			return;
-		}
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			return;
-		}
-		$allowed = (array) $this->settings->get( 'order_statuses' );
-		if ( ! empty( $allowed ) && ! in_array( $order->get_status(), $allowed, true ) ) {
-			return;
-		}
-
-		$args = array( $order_id, $is_backfill ? 1 : 0 );
-		if ( function_exists( 'as_enqueue_async_action' ) ) {
-			if ( function_exists( 'as_has_scheduled_action' )
-				&& as_has_scheduled_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP ) ) {
-				return; // already queued
+		try {
+			if ( ! $this->settings->get( 'enable_orders' ) ) {
+				return;
 			}
-			as_enqueue_async_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP );
-		} else {
-			$this->push_order( $order_id, (bool) $is_backfill );
+			// Don't echo back a change the platform just wrote to us.
+			if ( Shopify_Pulse_Status_Poller::is_writing_back() ) {
+				return;
+			}
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				return;
+			}
+			$allowed = (array) $this->settings->get( 'order_statuses' );
+			if ( ! empty( $allowed ) && ! in_array( $order->get_status(), $allowed, true ) ) {
+				return;
+			}
+
+			$args = array( $order_id, $is_backfill ? 1 : 0 );
+			if ( function_exists( 'as_enqueue_async_action' ) ) {
+				if ( function_exists( 'as_has_scheduled_action' )
+					&& as_has_scheduled_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP ) ) {
+					return; // already queued
+				}
+				as_enqueue_async_action( SHOPIFY_PULSE_SYNC_ACTION, $args, SHOPIFY_PULSE_AS_GROUP );
+			} else {
+				$this->push_order( $order_id, (bool) $is_backfill );
+			}
+		} catch ( \Throwable $e ) {
+			// `woocommerce_new_order` fires during order creation — a scheduling
+			// error here must never break the order the shopper just placed.
+			$this->logger->error( 'Order sync enqueue error (order kept): ' . $e->getMessage() );
 		}
 	}
 

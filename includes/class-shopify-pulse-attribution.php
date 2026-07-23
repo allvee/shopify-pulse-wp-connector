@@ -47,14 +47,19 @@ class Shopify_Pulse_Attribution {
 	}
 
 	public function snapshot( $order_id ) {
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			return;
-		}
-		$blob = $this->build_blob();
-		if ( ! empty( $blob ) ) {
-			$order->update_meta_data( self::META, wp_json_encode( $blob ) );
-			$order->save();
+		try {
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				return;
+			}
+			$blob = $this->build_blob();
+			if ( ! empty( $blob ) ) {
+				$order->update_meta_data( self::META, wp_json_encode( $blob ) );
+				$order->save();
+			}
+		} catch ( \Throwable $e ) {
+			// Attribution is best-effort — never let it break the order.
+			error_log( 'Shopify Pulse attribution snapshot error: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
 		}
 	}
 
