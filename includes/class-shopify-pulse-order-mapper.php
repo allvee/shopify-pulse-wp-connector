@@ -132,6 +132,13 @@ class Shopify_Pulse_Order_Mapper {
 			$payload['attributionExtra'] = $blob;
 		}
 
+		// Cart fingerprint (stamped at checkout by the abandoned-sync converter)
+		// so the platform can close the abandoned checkout this order recovered.
+		$fingerprint = (string) $order->get_meta( '_sp_cart_fingerprint' );
+		if ( '' !== $fingerprint ) {
+			$payload['cartFingerprint'] = $fingerprint;
+		}
+
 		/**
 		 * Filter the mirrored-order payload before it is pushed.
 		 *
